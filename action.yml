@@ -1,0 +1,34 @@
+name: Keystone
+description: Explain committed changes and audit them against project rules
+author: grant-hauskins
+branding:
+  icon: compass
+  color: purple
+inputs:
+  base:
+    description: Comparison base ref or SHA; caller must fetch its history
+    required: false
+    default: origin/main
+  head:
+    description: Evaluated head ref or SHA
+    required: false
+    default: HEAD
+  provider:
+    description: anthropic or openai
+    required: false
+    default: anthropic
+  model:
+    description: Provider model ID; required unless dry-run or no changes
+    required: false
+  dry-run:
+    description: Inspect committed changes without calling an LLM
+    required: false
+    default: 'true'
+outputs:
+  report:
+    description: Structured JSON report including the proposed active task
+  audit-status:
+    description: pass, warn, fail, or not-evaluated
+runs:
+  using: node24
+  main: dist/keystoneAction.js
