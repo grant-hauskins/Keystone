@@ -13,6 +13,7 @@ test('Anthropic sends a forced structured tool and keeps repository text out of 
     const body = JSON.parse(String(init?.body));
     assert.equal(body.model, 'chosen-model');
     assert.equal(body.tool_choice.name, 'record_evaluation');
+    assert.equal(body.tools[0].strict, true);
     assert.ok(!body.system.includes(snapshot.diff));
     assert.ok(body.messages[0].content.includes(snapshot.diff));
     return anthropicResponse();

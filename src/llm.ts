@@ -31,7 +31,7 @@ export async function evaluate(snapshot: Snapshot, options: LlmOptions): Promise
   const body = anthropic ? {
     model: options.model, max_tokens: 4096, system: SYSTEM_PROMPT,
     messages: [{ role: 'user', content: input }],
-    tools: [{ name: 'record_evaluation', description: 'Return an audit report. This tool is never executed.', input_schema: evaluationSchema }],
+    tools: [{ name: 'record_evaluation', description: 'Return an audit report. This tool is never executed.', strict: true, input_schema: evaluationSchema }],
     tool_choice: { type: 'tool', name: 'record_evaluation', disable_parallel_tool_use: true },
   } : {
     model: options.model, store: false, instructions: SYSTEM_PROMPT, input,

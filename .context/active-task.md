@@ -30,7 +30,11 @@ and produce a plain-English report using Anthropic or OpenAI.
 - GitHub CLI access repaired with a separate sandbox login; the original user login
   is unchanged. Credential storage remains outside the repository.
 - Anthropic credential is present in the environment (value was not read or printed).
-- TypeScript checks and 16 automated tests pass. Both provider contracts, local Git
+- TypeScript checks and 18 automated tests pass. Both provider contracts, local Git
   behavior, malformed responses, errors, and timeouts have been exercised.
 - Context is read from committed blobs; base-branch rules prevent a proposed change
   from relaxing its own audit. Bootstrapping without base rules is explicitly flagged.
+- The compiled CLI and shipped Action adapter both passed local smoke tests.
+- First live Anthropic evaluation reached the provider but returned a malformed list;
+  runtime validation rejected it without writing output. Strict tool schema enforcement
+  is now enabled. A follow-up live check remains in progress.
