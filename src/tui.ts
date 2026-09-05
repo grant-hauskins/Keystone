@@ -1,9 +1,10 @@
 import { emitKeypressEvents, type Key } from 'node:readline';
 import { parseArgs } from 'node:util';
-import { TuiModel } from './tui/model.js';
+import { SupabaseStore, loadConnection } from './storage/supabase.js';
+import { TuiModel, defaultServices } from './tui/model.js';
 import { renderFrame, safeText } from './tui/render.js';
 
-function main(): void {
+async function main(): Promise<void> {
   const { values } = parseArgs({ options: {
     repo: { type: 'string' }, base: { type: 'string' }, head: { type: 'string' },
     provider: { type: 'string' }, model: { type: 'string' }, help: { type: 'boolean', short: 'h' },
@@ -21,6 +22,9 @@ Use npm run keystone -- --help for the scriptable CLI.`);
   }
   const provider = values.provider ?? process.env.KEYSTONE_PROVIDER ?? 'anthropic';
   if (provider !== 'anthropic' && provider !== 'openai') throw new Error('Provider must be anthropic or openai.');
+  const connection = await loadConnection(process.cwd());
+  const database = new SupabaseStore(process.cwd());
+  if (connection) database.useConnection(connection);
   let tick = 0; let closed = false;
   const previousRaw = process.stdin.isRaw;
   let timer: NodeJS.Timeout;
@@ -41,10 +45,11 @@ Use npm run keystone -- --help for the scriptable CLI.`);
     if (process.stdin.isTTY) process.stdin.setRawMode(Boolean(previousRaw));
     process.stdin.pause();
     process.stdout.write('\x1b[?25h\x1b[?1049l');
+    if (model.state.databaseSavedId) console.log('Keystone: Record saved successfully to Supabase: ' + safeText(model.state.databaseSavedId));
     if (model.state.savedPath) console.log(`Keystone: Record saved successfully to ${safeText(model.state.savedPath)}`);
     else if (model.state.notice.startsWith('Record was not saved')) console.error(`Keystone: Record was not saved. ${safeText(model.state.error ?? '')}`);
   };
-  const model = new TuiModel({ ...values, provider, model: values.model ?? process.env.KEYSTONE_MODEL }, undefined, draw, cleanup);
+  const model = new TuiModel({ ...values, connection, provider, model: values.model ?? process.env.KEYSTONE_MODEL }, { ...defaultServices(), database }, draw, cleanup);
   const onKey = (text: string | undefined, key: Key) => {
     void model.handle(text, key).catch(() => {
       cleanup(); console.error('Keystone could not continue the terminal session. Your repository was not edited.'); process.exitCode = 1;
@@ -63,7 +68,7 @@ Use npm run keystone -- --help for the scriptable CLI.`);
   draw();
 }
 
-try { main(); } catch (error) {
+main().catch(error => {
   console.error(error instanceof Error ? error.message : 'Could not open Keystone.');
   process.exitCode = 1;
-}
+});

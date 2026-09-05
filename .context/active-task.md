@@ -1,6 +1,68 @@
 # Active task
 
-## Current milestone: Interactive terminal interface
+## Walkthrough materials update
+Status: Complete; usage-only edition saved in the output kit and docs/walkthrough.
+- Updated narration, source facts, producer prompt, and FAQ for the TUI AI-key field,
+  Supabase saving/history, and use of an already-connected MCP agent.
+- User reported setup complete and requested no PowerShell details. Removed command
+  recipes and infrastructure setup from the kit; begin inside the configured app.
+- Rebuilt combined NotebookLM source and ZIP; checked current menu/tool names and
+  absence of old command recipes. No application code or test behavior changed.
+
+## Current change: Add AI keys inside the TUI
+Status: Complete locally; full suite passed 44 tests.
+- Add a masked AI API key editor beside AI provider.
+- Keep per-provider overrides only in memory and preserve environment fallback.
+- Confirm setting the session key; never persist it in records or configuration.
+- Verify replacement, provider switching, cancellation, and secret-free rendering.
+
+## Current change: MCP agent connection
+Status: Implemented locally; ready for an agent host to connect.
+- Expose local stdio tools for inspection, pinned-snapshot AI review, Supabase save,
+  and history using the same core pipeline as the TUI.
+- Bind each server to one explicitly configured repository and stable label.
+- Keep credentials in the launching process environment, out of tool arguments.
+- Verify a real MCP client handshake and tool calls; document agent configuration.
+- Full suite passed 47 tests, including real stdio discovery/inspection against a
+  temporary Git repository and mocked review/save retry checks. No live LLM request
+  or authenticated hosted database save was performed for this change.
+- docs/mcp-setup.md documents tools, one-repository scope, credential forwarding,
+  cache lifetime, after-save confirmation, and limits. Hosted HTTP MCP is not included.
+
+## Current milestone: Supabase review storage
+Status: Implemented locally; user reports setup complete; hosted save verification pending.
+
+### Goal
+Connect the TUI to Supabase with user sign-in, private saved review records,
+and review history while preserving JSON export and canonical task files.
+
+### Acceptance criteria
+- [x] Add a versioned database migration with owner-only read/insert policies.
+- [x] Configure public connection details, password sign-in, and optional email-code sign-in in the TUI.
+- [x] Save reports with session retry-safe IDs and confirm only after database acknowledgement.
+- [x] Browse saved records without changing the current inspected snapshot.
+- [x] Test authentication failures, storage retries, and TUI behavior.
+- [ ] Verify the hosted schema and a user-authorized save when setup is available.
+
+### Decisions
+- Keep sign-in tokens in memory only; never store provider keys in review records.
+- Supabase stores history; .context/active-task.md remains canonical current task state.
+- Public connection details supplied by the user are local configuration, not secrets.
+
+### Verification and next step
+- User reported the migration succeeded. Hosted Auth settings returned HTTP 200;
+  anonymous review reads were denied with permission error 42501.
+- npm test passed 42 tests. Windows PTY launch loaded the public configuration,
+  the extended menu scrolled to database controls, and quit restored the terminal.
+- docs/supabase-setup.md covers dashboard settings, sign-in, saving, history, and limits.
+- Corrected the initial setup instructions: new Free projects cannot edit email
+  templates without custom SMTP (June 3, 2026 restriction). Added password sign-in
+  for a manually created, confirmed Supabase Auth user so testing needs no SMTP.
+- Authenticated hosted save/read and live two-user isolation remain unverified.
+- No review was uploaded during development. CLI/Action database storage, session
+  refresh, pagination beyond 20 records, and shared team access are not implemented.
+
+## Completed milestone: Interactive terminal interface
 Status: Complete locally; ready for review.
 
 ### Goal
@@ -39,6 +101,10 @@ and read or save its results without constructing CLI arguments.
 - The CLI confirms file saves on stderr, preserving JSON stdout. The Action confirms
   writing its report output. Failed writes never emit a success confirmation.
 - Settings remain session-only; feedback triage and automatic context sync remain future work.
+- Created a separate Keystone-Walkthrough-Kit deliverable with verified product facts,
+  hidden-input key setup, narrated shot list, video-production prompt, and accuracy checklist.
+  Confirmed that the TUI reads environment keys and has no key editor; no application
+  behavior changed and no new live AI review was run for the walkthrough documentation.
 
 ## Completed milestone: Phase 1 standalone evaluation pipeline
 Status: Complete locally; ready for review.

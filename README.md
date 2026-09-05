@@ -5,8 +5,11 @@ committed code with project rules, explains the changes in plain English, and
 proposes an updated task record.
 
 **Available now:** a keyboard-driven terminal interface, a scriptable local pipeline,
-and a small GitHub Action adapter.
+an MCP server for connected agents, and a small GitHub Action adapter.
 Automatic context writes, commits, and PR comments are planned for Phase 2.
+
+For a usage walkthrough and video-production source material, see the
+[walkthrough kit](docs/walkthrough/START-HERE.md).
 
 ## Start the terminal interface
 
@@ -17,7 +20,7 @@ npm start
 ```
 
 On a fresh clone, run `npm ci` first. The terminal interface uses Node's built-in
-terminal support and adds no runtime dependencies. Use an interactive terminal
+terminal support; the MCP server uses the official MCP SDK. Use an interactive terminal
 at least 76 columns wide and 22 rows tall. `npm run tui` is an equivalent launcher.
 
 1. Select **Repository** and press Enter. Paste the folder path of the project
@@ -28,8 +31,11 @@ at least 76 columns wide and 22 rows tall. `npm run tui` is an equivalent launch
    and code changes without calling an AI provider.
 4. Browse **Overview**, **Files**, **Diff**, **Findings**, and **Task** with Tab or
    Left/Right. Scroll with Page Up/Page Down or `j`/`k`.
-5. Select an **AI provider** and **Model**. The screen shows whether its environment
-   credential is available, never the key itself. You can use
+5. Select an **AI provider**, then **AI API key** directly below it. Paste your key
+   into the masked field and press Enter. It overrides that provider's terminal key
+   for this session only; it is not saved to disk or Supabase. Esc cancels an edit;
+   submitting the field blank restores the terminal key if available.
+   Set **Model** to a model ID, not a key. You can use
    `claude-haiku-4-5-20251001` with Anthropic if your account has access to it.
 6. Choose **Run AI review** or press `r`. Confirm the provider, model, and commit
    range shown before starting a billed request. The review uses the exact snapshot
@@ -43,9 +49,24 @@ Use Up/Down to select a setting or action and Enter to open it. `?` opens help;
 `q` or Ctrl+C exits and restores the terminal. Esc cancels an editor or an in-flight
 inspection/AI review. A submitted API request may still be billed after cancellation.
 Changing the repository or revisions clears stale results and requires inspection again.
-Settings are session-only. Saving a report is explicit; there is no automatic
-history or context synchronization. When you exit after saving, Keystone also
-prints the saved path in the restored terminal.
+Review settings are session-only. Saving is explicit; there is no automatic context
+synchronization. When you exit after saving, Keystone also prints the saved location.
+
+### Save to Supabase
+
+Follow [Supabase setup and first saved record](docs/supabase-setup.md) to install the
+database migration and configure user sign-in. **Password sign-in** works with a
+confirmed user created in the Supabase dashboard and requires no SMTP setup.
+Optional email-code sign-in requires a custom email template; new Free projects
+need custom SMTP to edit it. The TUI has **Database URL**,
+**Database key**, **Email sign-in**, and **Enter sign-in code** controls. Public
+connection settings are remembered locally; sign-in tokens are kept only in memory.
+
+Set a stable **Repository label**, then choose **Save to database**. Keystone confirms
+the record ID after the database acknowledges it. **Load history** opens the latest
+20 records for that label in **History**. Your inspected snapshot is left unchanged.
+Records are private to your signed-in account. The current task remains canonical
+in `.context/active-task.md`. The CLI and Action still use file output.
 
 You may prefill settings when launching:
 
@@ -59,6 +80,11 @@ give another coding agent the complete
 rules for preserving old scaffolding, pseudocode, and agent instructions.
 
 ## Run locally
+
+For agent connections, see [MCP setup](docs/mcp-setup.md). The local stdio server
+exposes inspection, AI review, Supabase save, and history tools. Start it through
+your MCP host using `node build/mcp.js --repo PATH --label owner/repository` after
+building. It does not share session keys entered into a separately running TUI.
 
 Requires Node.js 24+, npm, Git, and a repository with committed `CLAUDE.md` and
 `.context/active-task.md` files. The latter is the canonical task record.

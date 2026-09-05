@@ -62,17 +62,26 @@ function content(state: TuiState): Line[] {
     add('1. Choose a local Git repository. You can paste its folder path without command-line quotes.'); add('');
     add('2. Latest commit compares HEAD~1 to HEAD. Branch changes compares origin/main to HEAD. For a wider range, enter a custom base and head.'); add('');
     add('3. Inspect changes reads committed code, CLAUDE.md, and .context/active-task.md. It makes no AI call and ignores uncommitted changes.'); add('');
-    add('4. Choose an AI provider and enter a model ID available in your account. Credentials come from ANTHROPIC_API_KEY or OPENAI_API_KEY in the environment.'); add('');
+    add('4. Choose an AI provider and enter a model ID available in your account. Choose AI API key to enter a masked key for this session. Terminal keys are used as a fallback.'); add('');
     add('5. Run AI review sends the inspected snapshot to the selected provider. You see what will be sent before confirming. API charges apply.'); add('');
     add('6. Browse the report with Tab or Left/Right. Scroll with PgUp/PgDn or j/k. Save creates a new JSON report at your chosen path, then confirms success and displays the saved location. It never applies the proposed task.'); add('');
+    add('Database: configure the Project URL and publishable key. Password sign-in uses a confirmed user created in the Supabase dashboard and needs no email service. Email-code sign-in is optional and requires a template containing the code. Set a stable Repository label. Save to database uploads the report and label; Load history shows your latest 20 records. Sessions end when you exit.'); add('');
     add('Missing context? Add project rules in CLAUDE.md and a short task description in .context/active-task.md, commit them in the selected repository, and inspect again.'); add('');
     add('Esc closes this help. q or Ctrl+C exits. Esc cancels an inspection or AI request; an already-submitted request may still incur charges.', 'muted');
     return result;
   }
   if (state.editor) {
-    const labels = { repo: 'REPOSITORY FOLDER', base: 'BASE REVISION', head: 'HEAD REVISION', model: 'MODEL ID', save: 'SAVE REPORT' };
+    const labels = { apiKey: 'AI API KEY', repo: 'REPOSITORY FOLDER', base: 'BASE REVISION', head: 'HEAD REVISION', model: 'MODEL ID', save: 'SAVE REPORT', databaseUrl: 'DATABASE URL', databaseKey: 'PUBLISHABLE DATABASE KEY', email: 'EMAIL SIGN-IN', code: 'SIGN-IN CODE', repositoryLabel: 'REPOSITORY LABEL', passwordEmail: 'KEYSTONE LOGIN EMAIL', password: 'KEYSTONE LOGIN PASSWORD' };
     add(labels[state.editor.field], 'accent'); add('');
     const descriptions = {
+      apiKey: 'Paste the key for ' + state.provider + '. Input is hidden. Enter sets it for this session only. Leave blank to use the terminal key again; Esc keeps the current key.',
+      databaseUrl: 'Enter your https://project.supabase.co URL. Public connection settings are saved in the launch folder.',
+      passwordEmail: 'Enter the email of a confirmed user created under Supabase Authentication > Users. Next you will enter its Keystone password. No email is sent.',
+      password: 'Enter the password for that Keystone user, not your mailbox password or database password. Hidden input; never saved on disk.',
+      databaseKey: 'Enter only an sb_publishable_ key. Never use an administrative secret key.',
+      email: 'Enter your email. Pressing Enter requests a Supabase sign-in email; new users may be registered.',
+      code: 'Paste the code from your Supabase email. It is hidden and used only to sign in for this session.',
+      repositoryLabel: 'A stable name such as owner/repository. This label and the report are uploaded when you choose Save to database.',
       repo: 'Paste a local repository folder. Spaces are supported; no shell command is needed.',
       base: 'Where the comparison starts. Examples: HEAD~1, origin/main, or an earlier commit ID.',
       head: 'Which commit to review. HEAD selects the latest commit on the checked-out branch.',
@@ -81,7 +90,8 @@ function content(state: TuiState): Line[] {
     };
     add(descriptions[state.editor.field]); add('');
     const e = state.editor;
-    add(e.value.slice(0, e.cursor) + '|' + e.value.slice(e.cursor), 'title'); add('');
+    const display = e.field === 'apiKey' || e.field === 'code' || e.field === 'databaseKey' || e.field === 'password' ? '*'.repeat(e.value.length) : e.value;
+    add(display.slice(0, e.cursor) + '|' + display.slice(e.cursor), 'title'); add('');
     add(e.replace ? 'Type to replace the current value; arrows keep it for editing.' : 'Editing the value.', 'muted');
     add('Enter accepts  /  Esc cancels  /  Ctrl+U clears', 'accent');
     return result;
@@ -93,6 +103,29 @@ function content(state: TuiState): Line[] {
     add(`Commits: ${state.snapshot!.mergeBase.slice(0, 8)} -> ${state.snapshot!.head.slice(0, 8)}`, 'muted'); add('');
     add('This is an AI API request and may incur charges. Keystone will review the inspected snapshot, even if the branch moves afterward.'); add('');
     add('Enter / y: start review', 'accent'); add('Esc or any other key: go back', 'muted');
+    return result;
+  }
+  if (state.tab === 'History') {
+    add('SAVED DATABASE RECORDS', 'accent');
+    add('Repository: ' + state.repositoryLabel);
+    add('Latest 20 records. These do not replace your current inspection.'); add('');
+    if (!state.history.length) add('No records loaded. Sign in and choose Load history.');
+    for (const record of state.history) {
+      add(record.created_at + ' / ' + record.id, 'accent');
+      const stored = record.report;
+      add(`Commits: ${stored.base.slice(0, 8)} -> ${stored.head.slice(0, 8)}`, 'muted');
+      if (stored.evaluation) {
+        add(stored.evaluation.summary, 'title');
+        add('Advisory result: ' + stored.evaluation.audit.status);
+        for (const change of stored.evaluation.changes) add('- ' + change);
+        for (const finding of stored.evaluation.audit.findings) {
+          add(finding.severity + ': ' + finding.explanation);
+          add('Rule: ' + finding.rule); add('Evidence: ' + finding.evidence);
+        }
+        add('PROPOSED TASK (not applied)', 'accent'); add(stored.evaluation.proposedActiveTask);
+      } else add('Inspection only. No AI review was performed.');
+      add('Files: ' + stored.files.join(', ')); add('');
+    }
     return result;
   }
   const report = state.report;
@@ -132,6 +165,8 @@ function content(state: TuiState): Line[] {
     return result;
   }
   if (state.error) { add('ACTION NEEDED', 'error'); add(state.error); add(''); }
+  if (state.databaseSavedId) { add('RECORD SAVED SUCCESSFULLY', 'accent'); add('Supabase: ' + state.databaseSavedId); add(''); }
+  add('DATABASE: ' + state.databaseStatus, 'muted');
   if (state.savedPath) { add('RECORD SAVED SUCCESSFULLY', 'accent'); add(state.savedPath); add(''); }
   if (report?.evaluation) {
     const status = report.evaluation.audit.status;
@@ -151,7 +186,7 @@ function content(state: TuiState): Line[] {
     for (const warning of report.warnings) { add(warning, 'warning'); add(''); }
   }
   add('NEXT REVIEW', 'muted'); add(`${state.provider} / ${state.models[state.provider] || 'Select a model'}`);
-  add(state.credentialReady ? 'API key is available in the environment.' : 'No API key found. You can still inspect changes.', state.credentialReady ? 'accent' : 'warning');
+  add(state.credentialReady ? state.credentialSource === 'session' ? 'API key set in this session (not yet validated).' : 'API key is available in the environment.' : 'No API key found. You can still inspect changes.', state.credentialReady ? 'accent' : 'warning');
   return result;
 }
 
@@ -171,11 +206,14 @@ export function renderFrame(state: TuiState, columns: number, rows: number, colo
   lines.push(paint(fit('  K E Y S T O N E', width - 15), 'title') + paint(fit('LOCAL REVIEW', 15), 'accent'));
   lines.push(paint(fit('  Understand what changed. Keep your context clear.', width), 'muted'));
   lines.push(paint('-'.repeat(width), 'muted'));
-  const tabText = tabs.map(tab => tab === state.tab && !state.help ? `[${tab}]` : tab).join('  ');
+  const fullTabs = tabs.map(tab => tab === state.tab && !state.help ? `[${tab}]` : tab).join('  ');
+  const tabText = textWidth(fullTabs) <= right + 2 ? fullTabs : `[${state.tab}]  (Tab / arrows to switch)`;
   lines.push(paint(fit('  WORKSPACE', side + 3), 'muted') + paint(fit(state.help ? 'HELP' : tabText, right + 2), 'accent'));
+  const menuStart = Math.max(0, state.selected - bodyHeight + 1);
   for (let i = 0; i < bodyHeight; i++) {
     let left = ''; let tone: Tone = 'muted';
-    if (i < menu.length) { left = `${state.selected === i ? ' >' : '  '} ${menu[i]}`; tone = state.selected === i ? 'selected' : 'normal'; }
+    const menuIndex = i + menuStart;
+    if (menuIndex < menu.length) { left = `${state.selected === menuIndex ? ' >' : '  '} ${menu[menuIndex]}`; tone = state.selected === menuIndex ? 'selected' : 'normal'; }
     else if (i === menu.length + 1) left = `  ${state.provider.toUpperCase()}`;
     else if (i === menu.length + 2) { left = state.credentialReady ? '  Key available' : '  Key not set'; tone = state.credentialReady ? 'accent' : 'warning'; }
     else if (i === menu.length + 4) left = state.busy ? `  ${['|', '/', '-', '\\'][tick % 4]} Working...` : '  Repository read-only';
@@ -183,7 +221,7 @@ export function renderFrame(state: TuiState, columns: number, rows: number, colo
     lines.push(paint(fit(left, side), tone) + paint(' | ', 'muted') + paint(fit(line?.text ?? '', right + 2), line?.tone));
   }
   lines.push(paint('-'.repeat(width), 'muted'));
-  const notice = state.busy ? `${state.busy}... ${state.busy === 'Saving report' ? '' : 'Esc cancels.'}` : state.notice;
+  const notice = state.busy ? `${state.busy}... ${state.busy === 'Saving report' || state.busy === 'Database request' ? '' : 'Esc cancels.'}` : state.notice;
   const noticeLines = wrap(notice, width - 4);
   lines.push(paint(fit('  ' + (noticeLines[0] ?? ''), width), state.busy ? 'accent' : 'muted'));
   lines.push(paint(fit('  ' + (noticeLines[1] ?? ''), width), 'muted'));

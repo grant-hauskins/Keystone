@@ -1,17 +1,29 @@
 import { writeFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { resolve, basename } from 'node:path';
+import { randomUUID } from 'node:crypto';
+import type { Connection, ReviewStore, StoredReview } from '../storage/supabase.js';
 import type { Key } from 'node:readline';
 import { collectSnapshot } from '../git.js';
 import { runSnapshot } from '../pipeline.js';
 import type { LlmOptions } from '../llm.js';
 import type { Provider, Report, Snapshot } from '../types.js';
 
-export type Tab = 'Overview' | 'Files' | 'Diff' | 'Findings' | 'Task';
-export const tabs: Tab[] = ['Overview', 'Files', 'Diff', 'Findings', 'Task'];
-export const menu = ['Repository', 'Comparison', 'Base revision', 'Head revision', 'AI provider', 'Model', 'Inspect changes', 'Run AI review', 'Save report'];
-export type Field = 'repo' | 'base' | 'head' | 'model' | 'save';
+export type Tab = 'Overview' | 'Files' | 'Diff' | 'Findings' | 'Task' | 'History';
+export const tabs: Tab[] = ['Overview', 'Files', 'Diff', 'Findings', 'Task', 'History'];
+export const menu = ['Repository', 'Comparison', 'Base revision', 'Head revision', 'AI provider', 'AI API key', 'Model', 'Inspect changes', 'Run AI review', 'Save report', 'Database URL', 'Database key', 'Email sign-in', 'Enter sign-in code', 'Repository label', 'Save to database', 'Load history', 'Sign out', 'Password sign-in'];
+export type Field = 'apiKey' | 'repo' | 'base' | 'head' | 'model' | 'save' | 'databaseUrl' | 'databaseKey' | 'email' | 'code' | 'repositoryLabel' | 'passwordEmail' | 'password';
 export interface Editor { field: Field; value: string; cursor: number; replace: boolean }
 export interface TuiState {
+  databaseUrl: string;
+  databaseKey: string;
+  email: string;
+  code: string;
+  passwordEmail: string;
+  password: string;
+  repositoryLabel: string;
+  databaseStatus: string;
+  databaseSavedId: string | null;
+  history: StoredReview[];
   repo: string;
   base: string;
   head: string;
@@ -19,12 +31,13 @@ export interface TuiState {
   provider: Provider;
   models: Record<Provider, string>;
   credentialReady: boolean;
+  credentialSource: 'session' | 'environment' | 'missing';
   selected: number;
   tab: Tab;
   scroll: number;
   snapshot: Snapshot | null;
   report: Report | null;
-  busy: 'Inspecting repository' | 'Reviewing with AI' | 'Saving report' | null;
+  busy: 'Inspecting repository' | 'Reviewing with AI' | 'Saving report' | 'Database request' | null;
   editor: Editor | null;
   confirmReview: boolean;
   savedPath: string | null;
@@ -33,6 +46,7 @@ export interface TuiState {
   error: string | null;
 }
 export interface TuiOptions {
+  connection?: Connection | null;
   repo?: string;
   base?: string;
   head?: string;
@@ -40,6 +54,7 @@ export interface TuiOptions {
   model?: string;
 }
 export interface TuiServices {
+  database?: ReviewStore;
   inspect: (repo: string, base: string, head: string) => Promise<Snapshot>;
   review: (snapshot: Snapshot, options: LlmOptions) => Promise<Report>;
   save: (path: string, report: Report) => Promise<void>;
@@ -71,6 +86,13 @@ export function friendlyError(error: unknown): string {
 
 export class TuiModel {
   readonly state: TuiState;
+  #sessionKeys: Partial<Record<Provider, string>> = {};
+  private activeKey(): string { return this.#sessionKeys[this.state.provider] ?? this.services.key(this.state.provider); }
+  private refreshCredential(): void {
+    this.state.credentialReady = Boolean(this.activeKey().trim());
+    this.state.credentialSource = this.#sessionKeys[this.state.provider] ? 'session' : this.state.credentialReady ? 'environment' : 'missing';
+  }
+  private pendingRecord: { report: Report; repository: string; id: string } | null = null;
   private operation = 0;
   private abort: AbortController | null = null;
   private closed = false;
@@ -79,10 +101,15 @@ export class TuiModel {
   constructor(options: TuiOptions, private services: TuiServices = defaultServices(), private changed: () => void = () => {}, private exit: () => void = () => {}) {
     const provider = options.provider ?? 'anthropic';
     this.state = {
+      databaseUrl: options.connection?.url ?? '', databaseKey: options.connection?.publishableKey ?? '',
+      email: '', code: '', passwordEmail: '', password: '', repositoryLabel: basename(options.repo ?? services.cwd),
+      databaseStatus: options.connection ? 'Configured; choose a sign-in method' : 'Not configured',
+      databaseSavedId: null, history: [],
       repo: options.repo ?? services.cwd, base: options.base ?? 'HEAD~1', head: options.head ?? 'HEAD',
       comparison: options.base || options.head ? 'Custom range' : 'Latest commit', provider,
       models: { anthropic: '', openai: '', [provider]: options.model ?? '' },
       credentialReady: Boolean(services.key(provider).trim()),
+      credentialSource: services.key(provider).trim() ? 'environment' : 'missing',
       selected: 0, tab: 'Overview', scroll: 0, snapshot: null, report: null, busy: null,
       editor: null, confirmReview: false, savedPath: null, help: false, error: null,
       notice: 'Choose a repository, then inspect its committed changes. No AI call is made during inspection.',
@@ -93,6 +120,7 @@ export class TuiModel {
   private fail(message: string): void { this.state.error = message; this.state.tab = 'Overview'; this.state.scroll = 0; this.refresh(); }
   private invalidate(): void {
     this.state.snapshot = null; this.state.report = null; this.state.error = null;
+    this.state.databaseSavedId = null; this.state.history = []; this.pendingRecord = null;
     this.state.savedPath = null;
     this.state.tab = 'Overview'; this.state.scroll = 0;
     this.state.notice = 'Settings changed. Inspect again to load the selected commits.';
@@ -100,7 +128,7 @@ export class TuiModel {
 
   edit(field: Field): void {
     if (this.state.busy) return;
-    const value = field === 'save' ? resolve(this.services.cwd, `keystone-report-${Date.now()}.json`)
+    const value = field === 'apiKey' ? '' : field === 'save' ? resolve(this.services.cwd, `keystone-report-${Date.now()}.json`)
       : field === 'model' ? this.state.models[this.state.provider] : this.state[field];
     this.state.editor = { field, value, cursor: value.length, replace: true };
     this.refresh();
@@ -109,25 +137,117 @@ export class TuiModel {
   private async finishEdit(): Promise<void> {
     const editor = this.state.editor!;
     // Pasted Windows paths often arrive wrapped in quotes. They are data, never shell commands.
-    const value = editor.value.trim().replace(/^"(.*)"$/, '$1');
-    if (!value) { this.state.notice = 'Please enter a value, or press Esc to cancel.'; this.refresh(); return; }
+    const value = editor.field === 'password' ? editor.value : editor.value.trim().replace(/^"(.*)"$/, '$1');
+    if (!value && editor.field !== 'apiKey') { this.state.notice = 'Please enter a value, or press Esc to cancel.'; this.refresh(); return; }
     this.state.editor = null;
+    if (editor.field === 'apiKey') {
+      if (value) this.#sessionKeys[this.state.provider] = value;
+      else delete this.#sessionKeys[this.state.provider];
+      this.refreshCredential(); this.state.error = null;
+      this.state.notice = value ? 'API key set for ' + this.state.provider + ' for this session. It has not been tested or saved to disk.' : 'Session key cleared. Using the terminal key if available.';
+      this.refresh(); return;
+    }
+    if (['databaseUrl', 'databaseKey', 'email', 'code', 'repositoryLabel', 'passwordEmail', 'password'].includes(editor.field)) {
+      await this.finishDatabaseEdit(editor.field, value); return;
+    }
     if (editor.field === 'save') { await this.save(value); return; }
     if (editor.field === 'model') {
       this.state.models[this.state.provider] = value;
       this.state.notice = 'Model selected. The inspected commits are unchanged.';
     } else {
+      if (editor.field !== 'repo' && editor.field !== 'base' && editor.field !== 'head') return;
       this.state[editor.field] = editor.field === 'repo' ? resolve(this.services.cwd, value) : value;
+      if (editor.field === 'repo') this.state.repositoryLabel = basename(this.state.repo);
       if (editor.field === 'base' || editor.field === 'head') this.state.comparison = 'Custom range';
       this.invalidate();
     }
     this.refresh();
   }
 
+  private async databaseOperation(action: () => Promise<void>): Promise<void> {
+    if (this.state.busy) return;
+    if (!this.services.database) { this.fail('Database storage is unavailable.'); return; }
+    this.state.busy = 'Database request'; this.state.error = null; this.state.notice = 'Contacting Supabase...'; this.refresh();
+    try { await action(); }
+    catch (error) {
+      this.state.notice = 'Database request was not confirmed. See the error for the next step.';
+      const message = error instanceof Error ? error.message : 'Database request failed.';
+      if (/sign.in|session/i.test(message)) this.state.databaseStatus = 'Sign in required';
+      this.fail(message);
+    }
+    finally {
+      this.state.busy = null; this.refresh();
+      if (this.closeRequested) this.close();
+    }
+  }
+
+  private async finishDatabaseEdit(field: Field, value: string): Promise<void> {
+    if (field === 'passwordEmail') {
+      this.state.email = value; this.state.passwordEmail = value;
+      this.edit('password'); return;
+    }
+    if (field === 'repositoryLabel') {
+      if (value.length > 300) { this.fail('Use a repository label under 300 characters.'); return; }
+      this.state.repositoryLabel = value; this.state.history = []; this.state.databaseSavedId = null; this.pendingRecord = null;
+      this.state.notice = 'Repository label selected. Use the same owner/repository label on every computer.'; this.refresh(); return;
+    }
+    await this.databaseOperation(async () => {
+      const db = this.services.database!;
+      if (field === 'databaseUrl' || field === 'databaseKey') {
+        this.state[field] = value; db.signOut(); this.state.history = []; this.state.databaseSavedId = null;
+        this.state.databaseStatus = 'Not signed in'; this.pendingRecord = null;
+        if (this.state.databaseUrl && this.state.databaseKey) {
+          await db.configure({ url: this.state.databaseUrl, publishableKey: this.state.databaseKey });
+          this.state.databaseStatus = 'Configured; choose a sign-in method';
+          this.state.notice = 'Connection settings saved locally. Choose Password sign-in, or Email sign-in if code delivery is configured.';
+        } else this.state.notice = 'Enter the other database connection setting to finish setup.';
+      } else if (field === 'email') {
+        this.state.email = value; this.state.databaseStatus = 'Not signed in'; this.state.history = [];
+        await db.sendCode(value);
+        this.state.databaseStatus = 'Code requested; check your email';
+        this.state.notice = 'Sign-in code requested. Choose Enter sign-in code. Delivery depends on Supabase email settings.';
+      } else if (field === 'password') {
+        await db.signInPassword(this.state.email, value);
+        this.state.history = []; this.state.databaseStatus = 'Signed in';
+        this.state.notice = 'Signed in. No email service was needed. You can save records and load history.';
+      } else if (field === 'code') {
+        if (!this.state.email) throw new Error('Choose Email sign-in first.');
+        await db.verifyCode(this.state.email, value);
+        this.state.databaseStatus = 'Signed in'; this.state.notice = 'Signed in. You can save records and load history.';
+      }
+    });
+  }
+
+  async saveDatabase(): Promise<void> {
+    if (!this.state.report || this.state.busy) { this.fail('Inspect changes before saving to the database.'); return; }
+    const report = this.state.report;
+    const repository = this.state.repositoryLabel;
+    if (!this.pendingRecord || this.pendingRecord.report !== report || this.pendingRecord.repository !== repository) {
+      this.pendingRecord = { report, repository, id: randomUUID() };
+    }
+    const id = this.pendingRecord.id;
+    this.state.databaseSavedId = null;
+    await this.databaseOperation(async () => {
+      const saved = await this.services.database!.save(id, repository, report);
+      this.state.databaseSavedId = saved; this.state.tab = 'Overview'; this.state.scroll = 0;
+      this.state.notice = 'Record saved successfully to Supabase: ' + saved;
+    });
+  }
+
+  async loadHistory(): Promise<void> {
+    this.state.history = [];
+    await this.databaseOperation(async () => {
+      this.state.history = await this.services.database!.history(this.state.repositoryLabel);
+      this.state.tab = 'History'; this.state.scroll = 0;
+      this.state.notice = 'Loaded the latest 20 records for this repository label. The inspected snapshot is unchanged.';
+    });
+  }
+
   async inspect(): Promise<void> {
     if (this.state.busy) return;
     const operation = ++this.operation;
     this.state.busy = 'Inspecting repository'; this.state.error = null;
+    this.state.databaseSavedId = null; this.pendingRecord = null;
     this.state.snapshot = null; this.state.report = null; this.state.tab = 'Overview'; this.state.scroll = 0;
     this.state.savedPath = null;
     this.refresh();
@@ -137,7 +257,7 @@ export class TuiModel {
       if (this.operation !== operation || this.closed) return;
       this.state.snapshot = snapshot; this.state.report = report;
       this.state.notice = snapshot.diff ? `Inspection ready: ${snapshot.files.length} changed files. No AI review has run.` : 'No changes in this comparison. Choose another base revision to review more commits.';
-      this.state.selected = 7;
+      this.state.selected = menu.indexOf('Run AI review');
     } catch (error) {
       if (this.operation === operation && !this.closed) this.state.error = friendlyError(error);
     } finally {
@@ -149,10 +269,10 @@ export class TuiModel {
     if (this.state.busy) return;
     if (!this.state.snapshot) { this.fail('Inspect changes first so you can see which commits will be reviewed.'); return; }
     if (!this.state.snapshot.diff) { this.fail('There are no changes to review. Choose another comparison and inspect again.'); return; }
-    this.state.credentialReady = Boolean(this.services.key(this.state.provider).trim());
+    this.refreshCredential();
     if (!this.state.credentialReady) {
       const name = this.state.provider === 'anthropic' ? 'ANTHROPIC_API_KEY' : 'OPENAI_API_KEY';
-      this.fail(`No ${name} is available. Set it in your terminal environment, then restart Keystone. Inspection works without it. Never paste an API key into the model field.`); return;
+      this.fail(`No ${name} is available. Choose AI API key and paste it there. Inspection works without it. Never paste an API key into the model field.`); return;
     }
     if (!this.state.models[this.state.provider].trim()) { this.edit('model'); this.state.notice = 'Enter a model ID available in your provider account, then choose Run AI review.'; this.refresh(); return; }
     this.state.confirmReview = true; this.refresh();
@@ -168,10 +288,10 @@ export class TuiModel {
     try {
       const report = await this.services.review(snapshot, {
         provider: this.state.provider, model: this.state.models[this.state.provider],
-        apiKey: this.services.key(this.state.provider), signal: this.abort.signal,
+        apiKey: this.activeKey(), signal: this.abort.signal,
       });
       if (this.operation !== operation || this.closed) return;
-      this.state.report = report;
+      this.state.report = report; this.state.databaseSavedId = null; this.pendingRecord = null;
       this.state.notice = 'Review complete. Read the findings and proposed task before using them. Your repository has not been edited.';
     } catch (error) {
       if (this.operation === operation && !this.closed) this.state.error = friendlyError(error);
@@ -207,15 +327,17 @@ export class TuiModel {
 
   cancel(): void {
     // File writes cannot be cancelled safely once started. Wait for the exclusive write.
-    if (this.state.busy === 'Saving report') return;
+    if (this.state.busy === 'Saving report' || this.state.busy === 'Database request') return;
     this.operation++; this.abort?.abort(); this.abort = null; this.state.busy = null;
     this.state.notice = 'Operation cancelled. A submitted AI request may still be billed by the provider.';
     this.refresh();
   }
   close(): void {
-    if (this.state.busy === 'Saving report') {
-      this.closeRequested = true; this.state.notice = 'Finishing the record save before exiting.'; this.refresh(); return;
+    if (this.state.busy === 'Saving report' || this.state.busy === 'Database request') {
+      this.closeRequested = true; this.state.notice = 'Finishing the current storage request before exiting.'; this.refresh(); return;
     }
+    this.#sessionKeys = {}; this.state.editor = null;
+    this.services.database?.signOut();
     this.closed = true; this.operation++; this.abort?.abort(); this.exit();
   }
 
@@ -263,20 +385,30 @@ export class TuiModel {
     else if (text === 'r') { this.requestReview(); return; }
     else if (text === 's') { if (state.report) this.edit('save'); else this.fail('Inspect changes before saving a report.'); return; }
     else if (key.name === 'return') {
-      switch (state.selected) {
-        case 0: this.edit('repo'); return;
-        case 1:
+      switch (menu[state.selected]) {
+        case 'Repository': this.edit('repo'); return;
+        case 'Comparison':
           if (state.comparison === 'Latest commit') { state.comparison = 'Branch changes'; state.base = 'origin/main'; state.head = 'HEAD'; }
           else if (state.comparison === 'Branch changes') { state.comparison = 'Custom range'; this.edit('base'); }
           else { state.comparison = 'Latest commit'; state.base = 'HEAD~1'; state.head = 'HEAD'; }
           this.invalidate(); break;
-        case 2: this.edit('base'); return;
-        case 3: this.edit('head'); return;
-        case 4: state.provider = state.provider === 'anthropic' ? 'openai' : 'anthropic'; state.credentialReady = Boolean(this.services.key(state.provider).trim()); break;
-        case 5: this.edit('model'); return;
-        case 6: await this.inspect(); return;
-        case 7: this.requestReview(); return;
-        case 8: if (state.report) this.edit('save'); else this.fail('Inspect changes before saving a report.'); return;
+        case 'Base revision': this.edit('base'); return;
+        case 'Head revision': this.edit('head'); return;
+        case 'AI provider': state.provider = state.provider === 'anthropic' ? 'openai' : 'anthropic'; this.refreshCredential(); break;
+        case 'AI API key': this.edit('apiKey'); return;
+        case 'Model': this.edit('model'); return;
+        case 'Inspect changes': await this.inspect(); return;
+        case 'Run AI review': this.requestReview(); return;
+        case 'Database URL': this.edit('databaseUrl'); return;
+        case 'Database key': this.edit('databaseKey'); return;
+        case 'Email sign-in': this.edit('email'); return;
+        case 'Enter sign-in code': this.edit('code'); return;
+        case 'Repository label': this.edit('repositoryLabel'); return;
+        case 'Save to database': await this.saveDatabase(); return;
+        case 'Load history': await this.loadHistory(); return;
+        case 'Sign out': this.services.database?.signOut(); state.databaseStatus = 'Signed out'; state.history = []; state.notice = 'Signed out locally. No session tokens are saved on disk.'; break;
+        case 'Password sign-in': this.edit('passwordEmail'); return;
+        case 'Save report': if (state.report) this.edit('save'); else this.fail('Inspect changes before saving a report.'); return;
       }
     }
     this.refresh();

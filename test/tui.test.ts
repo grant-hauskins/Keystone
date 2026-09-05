@@ -4,7 +4,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import { join, resolve } from 'node:path';
 import { stripVTControlCharacters } from 'node:util';
-import { TuiModel, defaultServices, type TuiServices } from '../src/tui/model.js';
+import { TuiModel, defaultServices, menu, type Field, type TuiServices } from '../src/tui/model.js';
 import { renderFrame, safeText, textWidth } from '../src/tui/render.js';
 import { runSnapshot } from '../src/pipeline.js';
 import { fixture, change, snapshot, evaluation, anthropicResponse, git } from './helpers.js';
@@ -17,9 +17,52 @@ function services(overrides: Partial<TuiServices> = {}): TuiServices {
     ...overrides,
   };
 }
-async function edit(model: TuiModel, field: 'repo' | 'base' | 'head' | 'model', value: string): Promise<void> {
+async function edit(model: TuiModel, field: Field, value: string): Promise<void> {
   model.edit(field); await model.handle(value, {}); await model.handle('', { name: 'return' });
 }
+
+test('AI key editor is discoverable, masked, session-only, and uses replacements for the next review', async () => {
+  const received: string[] = [];
+  const model = new TuiModel({ model: 'test-model' }, services({ key: () => '', review: async (snapshot, options) => {
+    received.push(options.apiKey!);
+    return runSnapshot(snapshot, { ...options, fetcher: async () => anthropicResponse() });
+  } }));
+  assert.equal(menu[menu.indexOf('AI provider') + 1], 'AI API key');
+  model.state.selected = menu.indexOf('AI API key');
+  await model.handle('', { name: 'return' });
+  await model.handle('first-private-key');
+  assert.doesNotMatch(screen(model), /first-private-key/);
+  await model.handle('', { name: 'return' });
+  assert.equal(model.state.credentialReady, true);
+  assert.equal(model.state.credentialSource, 'session');
+  assert.doesNotMatch(JSON.stringify(model.state), /first-private-key/);
+  await model.inspect(); model.requestReview(); await model.handle('', { name: 'return' });
+  await edit(model, 'apiKey', 'replacement-private-key');
+  model.requestReview(); await model.handle('', { name: 'return' });
+  assert.deepEqual(received, ['first-private-key', 'replacement-private-key']);
+  assert.doesNotMatch(JSON.stringify(model.state.report), /private-key/);
+  assert.doesNotMatch(screen(model), /private-key/);
+  const fresh = new TuiModel({}, services({ key: () => '' }));
+  assert.equal(fresh.state.credentialReady, false);
+});
+
+test('AI keys follow the selected provider; cancelling preserves the key and clearing restores environment fallback', async () => {
+  const model = new TuiModel({}, services({ key: provider => provider === 'anthropic' ? 'inherited-test-key' : '' }));
+  await edit(model, 'apiKey', 'anthropic-session-key');
+  model.state.selected = menu.indexOf('AI provider'); await model.handle('', { name: 'return' });
+  assert.equal(model.state.provider, 'openai'); assert.equal(model.state.credentialReady, false);
+  await edit(model, 'apiKey', 'openai-session-key');
+  model.edit('apiKey'); await model.handle('discarded-key'); await model.handle('', { name: 'escape' });
+  assert.equal(model.state.credentialSource, 'session');
+  assert.doesNotMatch(JSON.stringify(model.state), /discarded-key/);
+  model.state.selected = menu.indexOf('AI provider'); await model.handle('', { name: 'return' });
+  assert.equal(model.state.credentialSource, 'session');
+  model.edit('apiKey'); await model.handle('', { name: 'return' });
+  assert.equal(model.state.credentialSource, 'environment');
+  assert.equal(model.state.credentialReady, true);
+  model.state.selected = menu.indexOf('AI provider'); await model.handle('', { name: 'return' });
+  assert.equal(model.state.credentialSource, 'session');
+});
 function screen(model: TuiModel, width = 110, height = 32): string {
   return stripVTControlCharacters(renderFrame(model.state, width, height, false).output);
 }
