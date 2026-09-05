@@ -86,3 +86,9 @@ test('active credential in input or output is rejected', async () => {
   await assert.rejects(evaluate({ ...snapshot, diff: '+test-key' }, { provider: 'anthropic', apiKey: 'test-key', model: 'test' }), /credential/);
   await assert.rejects(evaluate(snapshot, { provider: 'anthropic', apiKey: 'test-key', model: 'test', fetcher: async () => anthropicResponse({ ...evaluation, summary: 'test-key' }) }), /credential/);
 });
+
+test('proposed context must contain real Markdown line breaks', () => {
+  assert.throws(() => validateEvaluation({ ...evaluation, proposedActiveTask: '# Task\\n\\nOne long escaped line' }), /multiline Markdown/);
+  assert.throws(() => validateEvaluation({ ...evaluation, proposedActiveTask: 'Unstructured\ntext' }), /multiline Markdown/);
+  assert.equal(validateEvaluation(evaluation).proposedActiveTask, evaluation.proposedActiveTask);
+});

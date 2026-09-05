@@ -37,4 +37,6 @@ and produce a plain-English report using Anthropic or OpenAI.
 - The compiled CLI and shipped Action adapter both passed local smoke tests.
 - First live Anthropic evaluation reached the provider but returned a malformed list;
   runtime validation rejected it without writing output. Strict tool schema enforcement
-  is now enabled. A follow-up live check remains in progress.
+  is now enabled. A follow-up live call returned a structured pass, but its proposed
+  task used escaped line breaks and its summary was too technical. Markdown validation
+  and clearer plain-English instructions have been added; final live check is pending.

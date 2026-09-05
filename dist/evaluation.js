@@ -3,8 +3,8 @@ export const evaluationSchema = {
     type: 'object', additionalProperties: false,
     required: ['summary', 'changes', 'audit', 'proposedActiveTask'],
     properties: {
-        summary: string,
-        changes: { type: 'array', items: string },
+        summary: { type: 'string', description: 'One or two plain-English sentences for a person who does not write code; no filenames or jargon.' },
+        changes: { type: 'array', items: { type: 'string', description: 'A short user-visible outcome explained without technical jargon.' } },
         audit: {
             type: 'object', additionalProperties: false, required: ['status', 'findings'],
             properties: {
@@ -21,7 +21,7 @@ export const evaluationSchema = {
                 },
             },
         },
-        proposedActiveTask: string,
+        proposedActiveTask: { type: 'string', description: 'Complete Markdown task document starting with # Active task and containing actual line breaks, not literal backslash-n sequences.' },
     },
 };
 export function object(value) {
@@ -61,8 +61,12 @@ export function validateEvaluation(value) {
     const expected = findings.some(item => item.severity === 'error') ? 'fail' : findings.length ? 'warn' : 'pass';
     if (audit.status !== expected)
         throw new Error('Invalid model response: audit status contradicts findings.');
+    const proposedActiveTask = text(result.proposedActiveTask);
+    if (!/^#\s+\S/.test(proposedActiveTask) || !proposedActiveTask.includes('\n')) {
+        throw new Error('Invalid model response: proposed task must be a multiline Markdown document.');
+    }
     return {
         summary: text(result.summary), changes: list(result.changes).map(text),
-        audit: { status: expected, findings }, proposedActiveTask: text(result.proposedActiveTask),
+        audit: { status: expected, findings }, proposedActiveTask,
     };
 }
