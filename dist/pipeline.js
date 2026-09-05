@@ -2,6 +2,10 @@ import { collectSnapshot } from './git.js';
 import { evaluate } from './llm.js';
 export async function runKeystone(options) {
     const snapshot = await collectSnapshot(options.repo, options.base, options.head);
+    return runSnapshot(snapshot, options);
+}
+// Review the inspected snapshot rather than re-resolving moving branch refs.
+export async function runSnapshot(snapshot, options) {
     const report = {
         version: 1, status: snapshot.diff ? 'dry-run' : 'no-changes',
         base: snapshot.base, head: snapshot.head, mergeBase: snapshot.mergeBase,
@@ -15,6 +19,6 @@ export async function runKeystone(options) {
     if (provider !== 'anthropic' && provider !== 'openai')
         throw new Error('Provider must be anthropic or openai.');
     const model = options.model ?? '';
-    const evaluation = await evaluate(snapshot, { provider, model, apiKey: options.apiKey ?? '', fetcher: options.fetcher });
+    const evaluation = await evaluate(snapshot, { provider, model, apiKey: options.apiKey ?? '', fetcher: options.fetcher, signal: options.signal });
     return { ...report, status: 'evaluated', provider, model, evaluation };
 }

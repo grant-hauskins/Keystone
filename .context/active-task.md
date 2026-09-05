@@ -1,6 +1,46 @@
 # Active task
 
-## Phase 1: Standalone evaluation pipeline
+## Current milestone: Interactive terminal interface
+Status: Complete locally; ready for review.
+
+### Goal
+Let a person select a local repository, inspect committed changes, run an AI review,
+and read or save its results without constructing CLI arguments.
+
+### Acceptance criteria
+- [x] Launch a keyboard-driven full-screen terminal interface with npm start.
+- [x] Select a repository and comparison range; explain missing context and refs.
+- [x] Inspect changes without an API call before explicitly starting a live review.
+- [x] Select a provider/model and show credential availability without exposing keys.
+- [x] Browse plain-English results, findings, changed files, and proposed task context.
+- [x] Save a report to a new file without overwriting repository context.
+- [x] Keep the CLI and Action behavior working; test the controller and terminal flow.
+- [x] Verify the TUI against the local debate-engine repository and document usage.
+- [x] Produce a reusable metaprompt for onboarding existing documentation and pseudocode.
+- [x] Confirm successful record creation AFTER saving, as requested; no extra save-approval prompt.
+
+### Scope
+- Reuse the core pipeline. Feedback triage and automatic context writes remain future work.
+- Never automatically create commits or edit a selected repository from the TUI.
+- Terminal rendering must not execute control sequences from repository/model content.
+
+### Verification and delivered records
+- npm test built the source and Action modules and passed 32 tests with zero failures.
+- Interactive Windows terminal checks covered startup, repository inspection, tabs,
+  report export, success notification, and clean exit with restored terminal state.
+- debate-engine comparison 99a5f1d...030b4c02 loaded three changed files and its committed
+  canonical task. A dry-run report was saved outside that repository and confirmed
+  to the user. No AI call or target-repository edit occurred in the TUI smoke test.
+- Both provider contracts and pinned-snapshot review behavior were tested with mocks.
+  No new live provider call or hosted Actions run was performed for the TUI changes.
+- docs/keystone-adoption-metaprompt.md is the reusable onboarding guide. It distinguishes
+  binding rules, current tasks, historical decisions, and unimplemented scaffolding,
+  and includes conflict handling, commit checks, explicit comparisons, and after-save notices.
+- The CLI confirms file saves on stderr, preserving JSON stdout. The Action confirms
+  writing its report output. Failed writes never emit a success confirmation.
+- Settings remain session-only; feedback triage and automatic context sync remain future work.
+
+## Completed milestone: Phase 1 standalone evaluation pipeline
 Status: Complete locally; ready for review.
 
 ### Goal

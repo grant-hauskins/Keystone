@@ -1,4 +1,6 @@
 import { writeFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
+import { stripVTControlCharacters } from 'node:util';
 import { parseArgs } from 'node:util';
 import { runKeystone } from './pipeline.js';
 
@@ -31,7 +33,11 @@ Exit: 0 success/dry-run/no changes, 1 operational error, 2 audit failure.`);
     apiKey: process.env[provider === 'anthropic' ? 'ANTHROPIC_API_KEY' : 'OPENAI_API_KEY'],
   });
   const json = `${JSON.stringify(report, null, 2)}\n`;
-  if (values.output) await writeFile(values.output, json, { flag: 'wx', mode: 0o600 });
+  if (values.output) {
+    await writeFile(values.output, json, { flag: 'wx', mode: 0o600 });
+    const destination = stripVTControlCharacters(resolve(values.output)).replace(/[\x00-\x1f\x7f-\x9f]/g, '');
+    console.error(`Keystone: Record saved successfully to ${destination}`);
+  }
   console.log(json);
   if (report.evaluation?.audit.status === 'fail') process.exitCode = 2;
 }

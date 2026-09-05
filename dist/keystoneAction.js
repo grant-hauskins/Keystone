@@ -19,7 +19,7 @@ async function main() {
     // JSON encodes embedded newlines, so model content cannot inject output commands.
     const status = report.evaluation?.audit.status ?? 'not-evaluated';
     await appendFile(process.env.GITHUB_OUTPUT, `report=${JSON.stringify(report)}\naudit-status=${status}\n`);
-    console.log(`Keystone: ${report.status}; ${report.files.length} changed files; audit ${status}.`);
+    console.log(`Keystone: Record saved to this step's report output. ${report.status}; ${report.files.length} changed files; audit ${status}.`);
     if (status === 'fail')
         process.exitCode = 2;
 }

@@ -15,11 +15,13 @@ test('compiled CLI dry run creates a report, refuses overwrite, and reports bad 
   const run = (...args: string[]) => spawnSync(process.execPath, [cli, '--repo', repo, ...args], { encoding: 'utf8', windowsHide: true });
   const result = run('--dry-run', '--output', output);
   assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stderr, /Record saved successfully/);
   assert.equal(JSON.parse(result.stdout).status, 'dry-run');
   const saved = await readFile(output, 'utf8');
   assert.equal(JSON.parse(saved).evaluation, null);
   const repeat = run('--dry-run', '--output', output);
   assert.equal(repeat.status, 1);
+  assert.doesNotMatch(repeat.stderr, /Record saved successfully/);
   assert.equal(await readFile(output, 'utf8'), saved);
   const bad = run('--dry-run', '--base', 'does-not-exist');
   assert.equal(bad.status, 1);
@@ -36,6 +38,7 @@ test('shipped Action runs without dependencies and emits valid output records', 
       INPUT_BASE: 'origin/main', INPUT_HEAD: 'HEAD', INPUT_PROVIDER: 'anthropic', 'INPUT_DRY-RUN': 'true' },
   });
   assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /Record saved to this step's report output/);
   const lines = (await readFile(output, 'utf8')).trim().split('\n');
   assert.equal(lines.length, 2);
   assert.equal(JSON.parse(lines[0]!.slice('report='.length)).status, 'dry-run');

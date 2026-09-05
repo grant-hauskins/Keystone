@@ -4,8 +4,59 @@ Keystone helps people understand what their coding agents changed. It compares
 committed code with project rules, explains the changes in plain English, and
 proposes an updated task record.
 
-**Phase 1:** a working local evaluation pipeline and a small GitHub Action adapter.
+**Available now:** a keyboard-driven terminal interface, a scriptable local pipeline,
+and a small GitHub Action adapter.
 Automatic context writes, commits, and PR comments are planned for Phase 2.
+
+## Start the terminal interface
+
+From the Keystone folder, run:
+
+```powershell
+npm start
+```
+
+On a fresh clone, run `npm ci` first. The terminal interface uses Node's built-in
+terminal support and adds no runtime dependencies. Use an interactive terminal
+at least 76 columns wide and 22 rows tall. `npm run tui` is an equivalent launcher.
+
+1. Select **Repository** and press Enter. Paste the folder path of the project
+   you want to review. You do not need to construct a shell command.
+2. Choose **Comparison**: Latest commit, Branch changes, or a custom range.
+   You can edit **Base revision** and **Head revision** directly.
+3. Choose **Inspect changes** or press `i`. This loads committed rules, task context,
+   and code changes without calling an AI provider.
+4. Browse **Overview**, **Files**, **Diff**, **Findings**, and **Task** with Tab or
+   Left/Right. Scroll with Page Up/Page Down or `j`/`k`.
+5. Select an **AI provider** and **Model**. The screen shows whether its environment
+   credential is available, never the key itself. You can use
+   `claude-haiku-4-5-20251001` with Anthropic if your account has access to it.
+6. Choose **Run AI review** or press `r`. Confirm the provider, model, and commit
+   range shown before starting a billed request. The review uses the exact snapshot
+   you inspected, even if the branch moves afterward.
+7. Read the report and proposed task update. **Save report** (`s`) asks for a JSON
+   filename and saves when you press Enter, without an extra approval prompt.
+   Keystone confirms success afterward and displays the saved path. Failed writes
+   are reported as failures. It does not apply a task update or commit anything.
+
+Use Up/Down to select a setting or action and Enter to open it. `?` opens help;
+`q` or Ctrl+C exits and restores the terminal. Esc cancels an editor or an in-flight
+inspection/AI review. A submitted API request may still be billed after cancellation.
+Changing the repository or revisions clears stale results and requires inspection again.
+Settings are session-only. Saving a report is explicit; there is no automatic
+history or context synchronization. When you exit after saving, Keystone also
+prints the saved path in the restored terminal.
+
+You may prefill settings when launching:
+
+```powershell
+npm start -- --repo "C:\path\to\project" --base "YOUR_BASE_COMMIT"
+```
+
+Missing context is explained in the interface. To onboard an existing project,
+give another coding agent the complete
+[Keystone adoption metaprompt](docs/keystone-adoption-metaprompt.md). It includes
+rules for preserving old scaffolding, pseudocode, and agent instructions.
 
 ## Run locally
 
@@ -117,6 +168,7 @@ need caller handling until the Phase 2 event adapter is implemented.
 - `src/evaluation.ts`: shared output schema and runtime validation.
 - `src/pipeline.ts`: provider-independent orchestration.
 - `src/cli.ts`: standalone local entry point.
+- `src/tui.ts` and `src/tui/`: interactive terminal, controller, and safe rendering.
 - `src/keystoneAction.ts`: thin Action adapter.
 
 Run `npm run check`, `npm test`, and `npm run build` before committing. Commit the

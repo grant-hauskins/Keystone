@@ -24,6 +24,7 @@ export interface LlmOptions {
   apiKey: string;
   fetcher?: typeof fetch;
   timeoutMs?: number;
+  signal?: AbortSignal;
 }
 
 export async function evaluate(snapshot: Snapshot, options: LlmOptions): Promise<Evaluation> {
@@ -51,7 +52,9 @@ export async function evaluate(snapshot: Snapshot, options: LlmOptions): Promise
       method: 'POST', redirect: 'error',
       headers: anthropic ? { 'content-type': 'application/json', 'x-api-key': options.apiKey, 'anthropic-version': '2023-06-01' }
         : { 'content-type': 'application/json', authorization: `Bearer ${options.apiKey}` },
-      body: JSON.stringify(body), signal: AbortSignal.timeout(options.timeoutMs ?? 60_000),
+      body: JSON.stringify(body), signal: AbortSignal.any([
+        AbortSignal.timeout(options.timeoutMs ?? 60_000), ...(options.signal ? [options.signal] : []),
+      ]),
     });
     if (!response.ok) {
       await response.body?.cancel();
