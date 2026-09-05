@@ -1,0 +1,386 @@
+SOURCE: START-HERE.md
+
+# Keystone walkthrough kit — updated edition
+
+This kit describes the current local working build, including the AI key editor, Supabase storage, and MCP server. It replaces the earlier kit describing commit 57455c1. It contains production material, not a rendered video or captured footage.
+
+## Easiest way to enter your AI key
+
+1. Open the updated Keystone interface.
+2. Select **AI provider** and choose Anthropic or OpenAI.
+3. Select **AI API key**, directly below **AI provider**, and press Enter.
+4. Paste only the actual key, **without quotes**, then press Enter. The input is masked.
+5. Set **Model** to a model ID available to that provider account.
+
+The key overrides that provider's terminal key for this TUI session. It is not saved to disk or Supabase. Each provider has its own session key. Esc cancels editing. To remove an override, open the field and submit it empty; Keystone then uses the terminal key if one is available.
+
+“Key available” or “key set” does not prove the credential is valid. The real API request tests access. Anthropic being selected by default does not mean Keystone created a key.
+
+## Use your configured database and agent connections
+
+The walkthrough starts after setup. Choose **Password sign-in** to sign in with your Keystone account if needed. Then use **Save to database** and **Load history**. See **05-USING-SUPABASE.md**.
+
+For an agent already connected through MCP, use the prompts in **06-USING-KEYSTONE-WITH-AGENTS.md**. This kit does not cover installing or configuring the connection.
+
+## Make the video in NotebookLM / Gemini Notebook
+
+1. Remove the old Keystone source from the notebook, or create a fresh notebook, so conflicting versions are not mixed.
+2. Copy **NOTEBOOKLM-SOURCE.txt** into a pasted-text source. Do not upload the ZIP as a source.
+3. Open **Studio → Video Overview** and choose Explainer if offered.
+4. Use **03-VIDEO-GENERATION-PROMPT.md** as the custom instructions.
+5. Generate, review against **04-QUALITY-CHECK-AND-FAQ.md**, correct inaccuracies, and download the result.
+
+Google documents [pasted-text sources](https://support.google.com/gemininotebook/answer/16215270?hl=en) and [Video Overviews](https://support.google.com/gemininotebook/answer/16454555?hl=en). Controls vary by account; duration is a production target. A generated overview may illustrate the workflow without reproducing actual screens.
+
+For exact screen footage, record the actions in the shot list. Give those clips and this kit to a video editor. A text-only model can prepare narration and captions but may not render video.
+
+## Contents
+
+- 01-PRODUCT-FACTS.md — current capabilities and boundaries.
+- 02-NARRATION-AND-SHOT-LIST.md — six-minute script and recording instructions.
+- 03-VIDEO-GENERATION-PROMPT.md — copyable producer prompt.
+- 04-QUALITY-CHECK-AND-FAQ.md — accuracy checks and common problems.
+- 05-USING-SUPABASE.md — sign in, save records, and read history.
+- 06-USING-KEYSTONE-WITH-AGENTS.md — prompts for an already-connected agent.
+- NOTEBOOKLM-SOURCE.txt — all source material combined.
+
+No real credentials, private repository content, or authenticated review recordings are supplied.
+
+
+==============================
+
+SOURCE: 01-PRODUCT-FACTS.md
+
+# Current Keystone product facts
+
+Authority: current local working tree, especially src/tui/model.ts, src/tui/render.ts, src/storage/supabase.ts, src/mcp.ts, src/mcp/server.ts, and README.md. This edition supersedes the earlier pre-database walkthrough. The changes are local implementation; do not imply they have been published as a release.
+
+## What works
+
+Keystone reads committed changes, root CLAUDE.md rules, and committed Markdown under .context/. It provides local inspection, an optional Anthropic/OpenAI review, plain-English results, advisory findings, and proposed task text.
+
+The TUI can set a masked AI key, export JSON, sign in to Supabase, save a review record, and display history. A local MCP server exposes the same inspection/review pipeline and database storage to connected agents.
+
+## Exact TUI names and controls
+
+Menu, in order: Repository; Comparison; Base revision; Head revision; AI provider; AI API key; Model; Inspect changes; Run AI review; Save report; Database URL; Database key; Email sign-in; Enter sign-in code; Repository label; Save to database; Load history; Sign out; Password sign-in.
+
+Views: Overview; Files; Diff; Findings; Task; History.
+
+Up/Down selects menu items; Enter activates or edits. The menu scrolls when needed. Tab or Left/Right changes views. PgUp/PgDn or j/k scrolls content. i inspects, r requests review, s opens JSON saving, ? opens help, q or Ctrl+C exits. While editing, characters are input rather than shortcuts. Esc cancels an editor. Minimum terminal size: 76 columns by 22 rows.
+
+## Keys and passwords are different things
+
+- AI API key: Anthropic/OpenAI credential, entered in the masked TUI field or inherited from ANTHROPIC_API_KEY/OPENAI_API_KEY. TUI overrides are provider-specific, session-only, and take precedence over terminal values.
+- Model: a provider model identifier, never a secret.
+- Database key: public connection information for an already-configured Supabase project. This walkthrough does not teach configuration.
+- Keystone login password: your separate Keystone account password, used under Password sign-in.
+- MCP credentials: separate from a TUI session key. If the connected agent reports missing access, ask the person managing that connection.
+
+Key presence does not verify account access. Keystone does not identify who originally supplied an inherited key.
+
+## Selecting a compatible repository
+
+This walkthrough assumes Keystone is already installed and opens successfully. It can review a project in a different folder.
+
+The reviewed head must include committed .context/active-task.md. Root CLAUDE.md is also required; .claude/ is not a substitute. Rules come from the selected base, with a warned head fallback when bootstrapping. Context Markdown comes from head. Referenced external documents are not automatically followed.
+
+Latest commit uses HEAD~1...HEAD. Branch changes uses origin/main...HEAD, which must exist locally. Custom ranges accept explicit revisions. Three dots compares the common ancestor to head. Uncommitted work is excluded. A context-only latest commit can omit earlier code work, so choose the range deliberately.
+
+For migration, preserve existing useful instructions and scaffolding; reconcile conflicts, distinguish implemented behavior from future plans, and keep current task state canonical in .context/active-task.md. Use the separate adoption metaprompt for full migration guidance.
+
+## Inspect, review, and save
+
+Inspection is local and makes no AI call. A live review sends the inspected changes and context to the selected provider after the TUI confirmation and may incur API charges. It uses the inspected snapshot even if the branch subsequently moves.
+
+Before review, Task displays current committed task text and Findings says no review has run. After review, Task displays PROPOSED TASK UPDATE. Findings are advisory, including a pass.
+
+Save report creates a new JSON file in an existing folder; it never overwrites an existing file. Relative paths resolve from Keystone's launch directory. Save to database uploads the report and stable Repository label to Supabase. An inspection-only record has no AI findings. Reports can contain code excerpts in findings or proposed task text; no raw diff is uploaded as a separate report field.
+
+After successful saving, Keystone confirms the file location or database record ID. It does not claim success before acknowledgement or add an extra save approval after the user has chosen the action. A same-session database retry for the unchanged report reuses its ID. Restarting loses that retry state.
+
+Supabase records are private to the signed-in user. Load history shows the latest 20 for the exact repository label. History leaves the current inspection unchanged. Sign-in tokens are in memory; expired sessions need another sign-in.
+
+## MCP
+
+The local stdio server provides keystone_inspect, keystone_review, keystone_save_record, and keystone_history. Each configured connection targets one repository and label. Do not give credentials to an agent through tool arguments or chat. Only server-created result IDs may be saved. The latest 16 results remain available per connection; restarting invalidates them. Agents should relay successful-save confirmations to the user.
+
+This is not a hosted public HTTP endpoint and does not automatically collect agent conversations.
+
+## Limits and evidence
+
+The full local suite passed 47 tests, including a real MCP client handshake and repository inspection. Provider evaluation and database retries were tested with mocks. The hosted project's public API was reachable and anonymous reads were denied. An authenticated hosted save/read and live two-user isolation check remain unverified. Do not turn a scripted demo into a claim those checks passed.
+
+Automatic context edits, commits, PR comments, shared-team history, and agent-feedback relevance filtering are not implemented. The CLI and Action still use file output. Supabase stores history and proposals; .context/active-task.md remains the current task source of truth.
+
+
+==============================
+
+SOURCE: 02-NARRATION-AND-SHOT-LIST.md
+
+# Six-minute onboarding script
+
+Target duration: about six minutes with pauses. Times are editorial targets. Use a disposable demo repository with two committed revisions, committed CLAUDE.md and .context/active-task.md, and a simple change such as a friendlier welcome message. Do not use private production data.
+
+Pause recording during real credential entry. Use large terminal text. Any fabricated or simulated result must be labeled “Illustrative example.” No real successful cloud-save footage is supplied by this kit.
+
+## 00:00–00:30 — Understand the workflow
+
+Visual: title “Your first Keystone review,” followed by committed changes → inspect → review → save.
+
+Narration: “Your agent has changed the code. Keystone helps you understand what changed and whether the work appears to follow your project's rules. We'll enter an AI key, inspect a project, read a review, and save a record. Then we'll see how another agent can connect to Keystone.”
+
+## 00:30–01:20 — Enter the key in Keystone
+
+Visual: begin with the updated Keystone TUI already open. Highlight AI provider, then AI API key directly below it. Open the masked editor. Pause capture for real entry, then show the resulting session notice. Select Model.
+
+Narration: “Choose your AI provider first. Open AI API key and paste only the key, without quotes. Press Enter to set it for this session. Keystone hides the input and doesn't save it to disk or the database. Each provider keeps its own session key. The Model field is separate: it takes a model ID available to your account. A key-available message means a key is present; it doesn't prove your account can make the request.”
+
+## 01:20–02:00 — Find your way around
+
+Visual: move the selection with Up/Down; open and cancel an ordinary editor. Switch views with Tab and scroll using Page Down. Show ? help briefly.
+
+Narration: “Use the arrow keys to select a menu item and Enter to open it. Tab moves between the views, and Page Down scrolls longer results. Escape cancels an edit. The menu also scrolls, so database controls may be farther down. If you need a reminder, press question mark for help. Your project files aren't changed simply by browsing.”
+
+## 02:00–02:45 — Select and inspect the project
+
+Visual: Repository → demo folder. Show committed root CLAUDE.md and .context/active-task.md. Select Comparison and Inspect changes. Browse Files and Diff.
+
+Narration: “Choose the local project you want reviewed. Keystone can be installed in a different folder. The project needs committed rules in CLAUDE.md and a committed current task in .context/active-task.md. The .claude folder doesn't replace those files. Select a range that includes the code work. Latest commit only covers the last commit; widen it if your last commit only added context. Inspect changes is local and makes no AI request. Check the commits and files before proceeding.”
+
+## 02:45–03:30 — Review and interpret
+
+Visual: Run AI review confirmation, then Overview, Findings, and Task. Label any cut over processing time. Keep PROPOSED TASK UPDATE and its suggestion-only note visible.
+
+Narration: “Run AI review shows the provider and inspected commits before sending them. Confirm when you're ready; API charges may apply. Read the summary and findings, then inspect the proposed task update. These are advisory conclusions, so have your agent verify important claims. The Task view is a proposal. Keystone has not edited your task file or made a commit.”
+
+## 03:30–04:40 — Sign in and save a database record
+
+Visual: begin with database configuration already complete. Choose Password sign-in if needed, with capture paused during real credential entry. Show Repository label and Save to database. If no authenticated demo footage is available, use instruction cards rather than simulated success footage.
+
+Narration: “Your database connection is already set up. If you're signed out, select Password sign-in and use your Keystone account. Set a stable repository label, such as your project owner's name followed by the repository name. Use the same label each time so the history stays together. Choose Save to database to store this report. Keystone confirms success afterward and shows the record ID. You can also save an inspection without an AI review; that record will clearly say no AI review was performed. If you see an error, follow its message instead of assuming the save succeeded.”
+
+## 04:40–05:15 — Records and next steps
+
+Visual: actual saved ID if a real save occurred; otherwise a card titled “What to check after saving.” Show Load history and the History view. Briefly point to Save report as the JSON option.
+
+Narration: “After the save succeeds, Keystone confirms it and displays the record ID. Load history shows your latest records for that repository label. If a save fails, don't treat it as confirmed. JSON export is still available through Save report. Both formats store review records; your current task still lives in .context/active-task.md. Have your agent verify findings, make authorized fixes, update task context, commit, and inspect the next range.”
+
+## 05:15–06:00 — Connect another agent
+
+Visual: show a prepared, already-connected agent conversation with the example prompts from the agent-use guide. Label illustrative conversation text. Do not show installation or connection settings.
+
+Narration: “With your agent already connected to Keystone, ask it to inspect the intended changes and explain what it found. When ready, ask it to run a review with your chosen provider and model. Ask it to save the result and tell you the confirmed record ID, then check history. The agent works through Keystone tools instead of asking you to move files around. Keep credentials out of the conversation. MCP does not automatically read every agent conversation or apply task proposals. Ask your agent to verify the findings before making authorized changes.”
+
+## Producer notes
+
+Use only exact menu names from 01-PRODUCT-FACTS. The walkthrough starts with Keystone and its connections already set up. Do not show shells, installation commands, database administration, email-provider configuration, or MCP configuration files. The two usage guides provide additional detail on records and connected-agent requests.
+
+
+==============================
+
+SOURCE: 03-VIDEO-GENERATION-PROMPT.md
+
+# Producer prompt — current edition
+
+Create a beginner onboarding video titled “Your first Keystone review” from this updated source library. Replace earlier source material: it incorrectly describes the current build as lacking an AI-key editor, Supabase storage, and MCP. Target roughly six minutes, with calm English narration and readable controls. Use the supplied script and shot list.
+
+Required sequence:
+1. Explain committed changes → local inspection → optional AI review → saved record.
+2. Demonstrate AI provider → AI API key → Model. The key field is masked, provider-specific, and session-only. Actual pasted keys do not need quotes. A key being present does not establish validity.
+3. Demonstrate navigation inside Keystone: arrow keys, Enter, Tab, scrolling, Esc, and help.
+4. Explain committed CLAUDE.md and .context/active-task.md and choosing a meaningful comparison. The .claude directory is not a substitute for root rules.
+5. Inspect before review. Explain the external provider request and possible charges, then Overview, Findings, and the unapplied Task proposal.
+6. Start with the database already configured. Show Password sign-in if needed, then a stable Repository label. Keep real credentials off-screen.
+7. Do not cover infrastructure setup, database administration, SMTP, or account creation.
+8. Show Save to database, confirmation after acknowledgement, record ID, and Load history. Mention JSON export remains available through Save report.
+9. Show how to ask an already-connected agent to inspect, review, save, and report a confirmed record ID. No MCP installation or configuration.
+10. Explain that canonical task context remains in .context/active-task.md and agent review of proposals is still needed.
+
+Production requirements:
+- Use generic demo repositories and paths. No actual credentials or personal data.
+- Pause recording during real credential entry; illustrative input must be clearly fake and labeled.
+- Use authentic footage only when supplied. Otherwise use diagrams/instruction cards, not fabricated product screens.
+- Label simulated audit and save results “Illustrative example.” Do not claim a hosted authenticated save succeeded: that remains unverified in supplied evidence.
+- Do not invent automatic task sync, commits, PR comments, shared-team history, Gemini as an AI review provider, a hosted public MCP endpoint, or conversation ingestion.
+- Do not say all settings persist. AI overrides and login tokens are session-only; public Supabase connection details persist locally.
+- Preserve exact strings: AI API key, Password sign-in, .context/active-task.md, ANTHROPIC_API_KEY, OPENAI_API_KEY, HEAD~1, and MCP tool names.
+- Focus solely on using Keystone. No PowerShell, shell commands, environment-variable recipes, installation steps, or connection configuration.
+- Include the confirmed-save notice only after a successful write; no extra approval after an explicitly submitted save.
+- Review against the quality checklist before delivery.
+
+Deliver an actual video only if your tool can render one. Otherwise provide narration, captions, and editing instructions and state clearly that no video was generated. Duration is a pacing target, not a reason to omit clear in-app instructions.
+
+
+==============================
+
+SOURCE: 04-QUALITY-CHECK-AND-FAQ.md
+
+# Accuracy checklist and FAQ
+
+## Before publishing
+
+- [ ] AI API key appears directly below AI provider and is the main onboarding route.
+- [ ] Key entry is masked; actual pasted keys have no surrounding quotes.
+- [ ] The walkthrough focuses on Keystone usage; no shell or infrastructure setup is shown.
+- [ ] No real key appears in commands, video frames, captions, uploads, or narration.
+- [ ] TUI overrides are session-only and take precedence over terminal values for that provider.
+- [ ] Model is an identifier, not a credential.
+- [ ] The selected repository has committed CLAUDE.md and .context/active-task.md.
+- [ ] The comparison includes intended code work, not just a documentation-only commit.
+- [ ] Local inspection is distinguished from a billed AI review.
+- [ ] Findings are advisory; Task output is a proposal, not an applied change.
+- [ ] Password sign-in uses the viewer’s already-created Keystone account.
+- [ ] Supabase's public project key, login password, AI key, and database password are not conflated.
+- [ ] Save to database confirms a record ID only after acknowledgement.
+- [ ] Load history is scoped to the current database user and exact repository label.
+- [ ] JSON export remains available, and .context/active-task.md remains canonical.
+- [ ] MCP is local stdio; it does not share a TUI session key or ingest conversations automatically.
+- [ ] Synthetic results are labeled; no unverified hosted save is presented as proven.
+- [ ] No roadmap capability is presented as shipped.
+
+## I don't see AI API key
+
+It is directly below AI provider in the updated interface. Close and reopen the updated installation. If the field is still missing, you may be using an older copy.
+
+## Does my key need quotes?
+
+No. In the AI API key field, paste only the key and press Enter. The input is masked. Set AI provider first; Model takes the model ID.
+
+## Will Keystone remember the key?
+
+The in-app key lasts for this session and is separate for each provider. It takes precedence over an inherited key. Press Esc to cancel an edit, or submit the field empty to restore the inherited key if available.
+
+## Key available, but review fails
+
+Presence is not validation. Match provider and model, check account API access and billing, and read the error. Do not paste the key into Model or share it while troubleshooting.
+
+## What makes a repository compatible?
+
+Committed root CLAUDE.md and committed .context/active-task.md at the appropriate revisions, plus a valid comparison. The folder tree alone cannot prove this. Inspect changes validates readiness without an AI key or database sign-in. Keep historical scaffolding and future plans clearly distinguished from active requirements.
+
+## Which password does Password sign-in use?
+
+Use your separate Keystone account password. Do not enter your mailbox password, database password, or AI API key there. This guide assumes your account and connection have already been set up.
+
+## I saved JSON. Is it in Supabase too?
+
+No. Save report writes JSON locally. Save to database writes a database record. Each success message identifies its destination. Neither action edits .context/active-task.md.
+
+## My database save lost its connection
+
+Retry without changing or re-inspecting the report in the same session. Keystone reuses its record ID and checks an existing record for equality. After restarting, inspect history first because retry state is not persisted. Do not claim a save occurred without acknowledgement or a verified matching record.
+
+## Why can't the agent use my TUI key?
+
+MCP runs as a separate process. A key entered only in the TUI is not shared with a connected agent. If its Keystone tools report missing credentials, ask the person managing the connection to resolve access; do not paste secrets into the conversation.
+
+## Does an MCP save update the task automatically?
+
+No. The agent receives a record ID after successful saving and should relay that confirmation to you. Task proposals still need verification and authorized application. The server exposes no repository-writing tool.
+
+## What has actually been verified?
+
+The local suite passed 47 tests, including real MCP discovery and inspection. Hosted public API access and anonymous denial were checked. Authenticated hosted save/read and live multi-user isolation remain unverified. The walkthrough kit itself contains no recorded live audit or cloud save.
+
+
+==============================
+
+SOURCE: 05-USING-SUPABASE.md
+
+# Save and revisit Keystone records
+
+This guide begins with your Supabase connection and Keystone account already set up.
+
+## Sign in if needed
+
+Scroll to **Password sign-in**, press Enter, and enter your Keystone account email. Then enter your Keystone account password in the masked field. Successful login displays “Signed in.” Do not use an AI key or mailbox password here.
+
+If your existing installation uses email-code login, use **Email sign-in** and **Enter sign-in code** instead. This guide does not cover configuring either login method.
+
+Sign-in lasts for the current session. When it expires, sign in again. **Sign out** ends local access and clears loaded history.
+
+## Save a record
+
+1. Choose **Repository** and the comparison you intend to examine.
+2. Choose **Inspect changes**. Optionally run an AI review afterward.
+3. Set **Repository label** to a stable name such as `owner/project`. Use the same label for this repository in every session and connected agent.
+4. Choose **Save to database**.
+5. Wait for **RECORD SAVED SUCCESSFULLY** and the Supabase record ID.
+
+The record contains the report and repository label. A review report includes findings and proposed task text; an inspection-only report does not include an AI evaluation. Saving confirms afterward without an extra approval step.
+
+If the save is interrupted, retry the same report in the same session without inspecting again. Keystone reuses the record ID and checks an existing matching record. After restarting, check history before repeating an uncertain save.
+
+## Read history
+
+Choose **Load history**. Keystone opens **History**, showing the latest 20 records for your signed-in user and exact repository label. Use PgUp/PgDn or j/k to scroll through summaries, findings, and proposals.
+
+Check the record ID, date, and reviewed commits to identify the right record. Loading history does not replace your current inspection. An old proposal is historical information, not the current task.
+
+If the list is empty, check your account and Repository label. Records saved under another label will not appear in this list. Shared team history is not part of the current version.
+
+## Export a local copy
+
+Use **Save report** to save the current inspection or review as a new JSON file. Choose an existing folder and a new filename. Keystone refuses to overwrite an existing file and shows the saved path after success.
+
+JSON export and database saving are separate actions. Saving to one destination does not automatically copy the record to the other.
+
+## Keep the task current
+
+Neither save action applies a task proposal. Give the findings and proposed text to your agent, ask it to verify them, and have it update `.context/active-task.md` as part of authorized work. Commit that work before the next inspection.
+
+
+==============================
+
+SOURCE: 06-USING-KEYSTONE-WITH-AGENTS.md
+
+# Use Keystone with an already-connected agent
+
+This guide assumes your agent application already has access to Keystone's MCP tools for the intended repository. It covers what to ask the agent, not installing the connection.
+
+## Start with inspection
+
+Say:
+
+> Use Keystone to inspect the latest committed change in this repository. Tell me which commits and files it includes, and whether the project rules and active task loaded. Do not run an AI review or save anything yet.
+
+The agent should call **keystone_inspect** and explain the result. If you want the whole task rather than the latest commit, tell it the intended base and head. Inspection excludes uncommitted work.
+
+## Request a review
+
+Say:
+
+> Review that inspected snapshot with Keystone using my chosen provider and model. Explain the summary, any rule findings, and what the proposed task update would change.
+
+Use the actual provider and model you intend to use. The agent calls **keystone_review** with the inspection's result ID. This makes an external AI request and may incur charges.
+
+The review uses the inspected snapshot even if the branch has since moved. The returned findings are advisory. If the agent reports missing credentials, have the person managing the connection resolve access. Do not paste keys or passwords into the conversation.
+
+## Save and verify
+
+Say:
+
+> Save that Keystone review to the database. After saving succeeds, tell me the confirmed record ID. Then load history and verify that record appears.
+
+The agent should call **keystone_save_record**, report success only after acknowledgement, and call **keystone_history** to check the record. If saving fails, it should explain the error rather than claim success.
+
+An inspection and its subsequent AI review have different result IDs. Ask the agent to save the evaluated review when that is what you want. The database record ID is returned only by the save operation.
+
+## Use the findings to guide the next change
+
+Say:
+
+> Check Keystone's findings against the code. Address the valid findings within our current task, update .context/active-task.md, and report what you verified. Do not treat historical proposals as new requirements.
+
+The agent's ordinary coding capabilities handle authorized edits. Keystone's MCP tools do not themselves modify the repository or apply task proposals.
+
+## Understand the boundaries
+
+Each connection targets one repository and stable label. If you are working on another project, use its configured Keystone connection.
+
+Only the latest 16 result IDs remain in a connection's memory. Restarting the connection invalidates them. If a result has expired, inspect again. After an uncertain save and restart, check history before repeating it.
+
+The TUI and connected agent have separate sessions. A key entered only in the TUI is not automatically available to the agent's Keystone connection.
+
+MCP does not automatically collect agent conversations or decide which feedback is relevant. Ask for each inspection, review, and save deliberately. The agent should always relay Keystone's after-save confirmation to you.

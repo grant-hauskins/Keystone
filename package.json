@@ -4,7 +4,9 @@
   "private": true,
   "description": "Plain-English audits and context for agent code changes",
   "type": "module",
-  "engines": { "node": ">=24" },
+  "engines": {
+    "node": ">=24"
+  },
   "scripts": {
     "start": "tsc && node build/tui.js",
     "tui": "tsc && node build/tui.js",
@@ -14,7 +16,12 @@
     "keystone": "tsc && node build/cli.js"
   },
   "devDependencies": {
+    "@modelcontextprotocol/client": "2.0.0",
     "@types/node": "^24.0.0",
     "typescript": "^5.9.0"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/server": "2.0.0",
+    "zod": "4.5.4"
   }
 }
