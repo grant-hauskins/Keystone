@@ -5,7 +5,7 @@
   "description": "Plain-English audits and context for agent code changes",
   "type": "module",
   "engines": {
-    "node": ">=24"
+    "node": ">=22"
   },
   "scripts": {
     "start": "tsc && node build/tui.js",

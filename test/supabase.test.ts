@@ -144,3 +144,39 @@ test('password input is masked, preserves whitespace, and is discarded after sub
   assert.doesNotMatch(JSON.stringify(tui.state), /private password/);
   assert.equal(tui.state.databaseStatus, 'Signed in');
 });
+
+test('database connection comes from the environment before the configuration file', async t => {
+  const { loadConnection } = await import('../src/storage/supabase.js');
+  const { fixture } = await import('./helpers.js');
+  const folderWithoutFile = await fixture(t);
+  assert.equal(await loadConnection(folderWithoutFile, {}), null);
+  assert.deepEqual(await loadConnection(folderWithoutFile, { KEYSTONE_DB_URL: connection.url, KEYSTONE_DB_KEY: connection.publishableKey }), connection);
+  await assert.rejects(loadConnection(folderWithoutFile, { KEYSTONE_DB_URL: 'https://evil.invalid', KEYSTONE_DB_KEY: connection.publishableKey }), /KEYSTONE_DB_URL/);
+  await assert.rejects(loadConnection(folderWithoutFile, { KEYSTONE_DB_URL: connection.url, KEYSTONE_DB_KEY: 'sb_secret_bad' }), /KEYSTONE_DB_KEY/);
+  await assert.rejects(loadConnection(folderWithoutFile, { KEYSTONE_DB_URL: connection.url }), /Set both/);
+});
+
+test('unattended database access signs in with environment credentials before every operation', async () => {
+  const { unattendedDatabase } = await import('../src/storage/supabase.js');
+  const report = await runSnapshot(snapshot, { dryRun: true });
+  const calls: string[] = [];
+  const store = new SupabaseStore('.', async (url, init) => {
+    calls.push(String(url));
+    if (String(url).includes('grant_type=password')) {
+      assert.equal(JSON.parse(String(init!.body)).password, 'private env password');
+      return authResponse();
+    }
+    assert.equal(new Headers(init!.headers).get('Authorization'), 'Bearer private-session-token');
+    return init!.method === 'POST' ? Response.json([{ id }]) : Response.json([]);
+  });
+  store.useConnection(connection);
+  const env = { KEYSTONE_DB_EMAIL: 'user@example.invalid', KEYSTONE_DB_PASSWORD: 'private env password' };
+  assert.equal(unattendedDatabase(store, connection, {}), undefined);
+  assert.equal(unattendedDatabase(store, connection, { KEYSTONE_DB_EMAIL: env.KEYSTONE_DB_EMAIL }), undefined);
+  assert.equal(unattendedDatabase(store, null, env), undefined);
+  const db = unattendedDatabase(store, connection, env)!;
+  assert.deepEqual(await db.history('owner/repo'), []);
+  assert.equal(await db.save(id, 'owner/repo', report), id);
+  assert.equal(calls.filter(url => url.includes('grant_type=password')).length, 2);
+  assert.ok(calls.every(url => !url.includes('private env password')));
+});

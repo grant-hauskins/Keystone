@@ -1,5 +1,25 @@
 # Active task
 
+## Current change: Conductor merge (Keystone as the context engine)
+Status: Implemented locally; full suite passed 51 tests. The Conductor side lives in
+grant-hauskins/conductor on the same branch and calls the command line described here.
+- Added a documented command-line contract for host applications: `--include-snapshot`
+  adds the committed diff, rules, and context to the JSON; `--save-db --input` saves an
+  existing report; `--history --label` reads records; `KEYSTONE_DB_URL`/`KEYSTONE_DB_KEY`
+  configure the connection from the environment. The default report is byte-identical.
+- Extracted the MCP server's unattended password sign-in into `unattendedDatabase`,
+  now shared by the MCP server and the CLI. Exported `validateReport` for file input.
+- Relaxed `engines.node` to 22 after the full suite passed on Node 22.22.2; the Action
+  still declares the `node24` runtime, which is a GitHub runner setting, not an engine.
+- Checks: `npm run check`, `npm test` (51 passed, 0 failed), `npm run build`; `dist/`
+  has no diff because no core pipeline file changed.
+- Not verified: a live Supabase save through the new CLI mode (no hosted credentials
+  in this environment); a live provider call with Conductor's default model. Both remain
+  advisory claims until a user with credentials runs them.
+- Decisions: `--save-db` requires `--input` so a paid review is never re-run to store
+  it; database secrets travel only in the environment; Conductor writes and commits its
+  own project repositories and Keystone only reads them.
+
 ## Walkthrough materials update
 Status: Complete; usage-only edition saved in the output kit and docs/walkthrough.
 - Updated narration, source facts, producer prompt, and FAQ for the TUI AI-key field,

@@ -5,7 +5,9 @@ committed code with project rules, explains the changes in plain English, and
 proposes an updated task record.
 
 **Available now:** a keyboard-driven terminal interface, a scriptable local pipeline,
-an MCP server for connected agents, and a small GitHub Action adapter.
+an MCP server for connected agents, a small GitHub Action adapter, and a command-line
+contract used by the [Conductor](https://github.com/grant-hauskins/conductor) desktop
+app, which runs Keystone in the background after every project save.
 Automatic context writes, commits, and PR comments are planned for Phase 2.
 
 For a usage walkthrough and video-production source material, see the
@@ -66,7 +68,8 @@ Set a stable **Repository label**, then choose **Save to database**. Keystone co
 the record ID after the database acknowledges it. **Load history** opens the latest
 20 records for that label in **History**. Your inspected snapshot is left unchanged.
 Records are private to your signed-in account. The current task remains canonical
-in `.context/active-task.md`. The CLI and Action still use file output.
+in `.context/active-task.md`. The Action still uses file output; the CLI can also save
+an existing report with `--save-db` (see below).
 
 You may prefill settings when launching:
 
@@ -86,7 +89,7 @@ exposes inspection, AI review, Supabase save, and history tools. Start it throug
 your MCP host using `node build/mcp.js --repo PATH --label owner/repository` after
 building. It does not share session keys entered into a separately running TUI.
 
-Requires Node.js 24+, npm, Git, and a repository with committed `CLAUDE.md` and
+Requires Node.js 22+, npm, Git, and a repository with committed `CLAUDE.md` and
 `.context/active-task.md` files. The latter is the canonical task record.
 
 ```sh
@@ -136,6 +139,26 @@ npm run keystone -- --provider anthropic --model claude-haiku-4-5-20251001 --out
 After building, `node build/cli.js` accepts the same arguments and writes clean JSON
 to standard output, without npm's banner. `--output` never overwrites an existing
 file. Source files and the canonical task record are never modified by Phase 1.
+
+Add `--include-snapshot` to include the committed diff, base rules, and context
+files in the JSON for applications that display them; the plain report is unchanged.
+
+### Save and read records from the command line
+
+The same Supabase storage the terminal interface uses is available unattended. Public
+connection details come from `KEYSTONE_DB_URL` and `KEYSTONE_DB_KEY` (or the
+`.keystone-supabase.json` file in `--config-dir`); the confirmed Keystone user's
+`KEYSTONE_DB_EMAIL` and `KEYSTONE_DB_PASSWORD` come from the environment, never from
+arguments. Saving takes an existing report so a paid review is never repeated:
+
+```sh
+node build/cli.js --repo PATH --dry-run --output report.json
+node build/cli.js --save-db --input report.json --label owner/repository
+node build/cli.js --history --label owner/repository
+```
+
+The save prints the record ID only after the database acknowledges it. Passing the same
+`--record-id` again verifies the existing record instead of writing a duplicate.
 
 ## Understanding the result
 
@@ -187,13 +210,22 @@ SHA; comparing `origin/main...HEAD` after checkout of main would usually be empt
 Deleted branches, initial pushes with a zero `before` SHA, and unrelated histories
 need caller handling until the Phase 2 event adapter is implemented.
 
+## Use Keystone inside Conductor
+
+Conductor keeps each of its projects as a small Git repository with generated
+`CLAUDE.md`, `.context/active-task.md`, and one Markdown file per stage, and runs this
+command line after every save. Its **Keystone** tab offers the same controls as the
+terminal interface: inspect, review, findings, proposed task, JSON export, database
+save, and history. See [Keystone inside Conductor](docs/conductor-integration.md) for
+the exact commands, environment, and exit codes Conductor relies on.
+
 ## Development
 
 - `src/git.ts`: bounded Git diff extraction and committed context loading.
 - `src/llm.ts`: native HTTP adapters for Anthropic Messages and OpenAI Responses.
 - `src/evaluation.ts`: shared output schema and runtime validation.
 - `src/pipeline.ts`: provider-independent orchestration.
-- `src/cli.ts`: standalone local entry point.
+- `src/cli.ts`: standalone local entry point; also the contract Conductor calls.
 - `src/tui.ts` and `src/tui/`: interactive terminal, controller, and safe rendering.
 - `src/keystoneAction.ts`: thin Action adapter.
 
@@ -217,7 +249,8 @@ task record after every completed feature.
 - Prompt separation and schema validation reduce risk but cannot guarantee model
   accuracy or eliminate prompt injection. No tools or commands from the model run.
 - Context sync, auto-commits, PR comments, retry policy, and event-aware triggers
-  remain future work.
+  remain future work in Keystone itself. Conductor commits its own project files and
+  shows proposals; it does not apply them either.
 
 ## API references
 

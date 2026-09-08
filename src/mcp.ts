@@ -3,7 +3,7 @@ import { parseArgs } from 'node:util';
 import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import { collectSnapshot } from './git.js';
 import { runSnapshot } from './pipeline.js';
-import { SupabaseStore, loadConnection } from './storage/supabase.js';
+import { SupabaseStore, loadConnection, unattendedDatabase } from './storage/supabase.js';
 import { AgentSession, type AgentServices } from './mcp/service.js';
 import { createAgentServer } from './mcp/server.js';
 
@@ -20,18 +20,9 @@ async function main(): Promise<void> {
   const connection = await loadConnection(values['config-dir'] ?? process.cwd());
   const store = new SupabaseStore(values['config-dir'] ?? process.cwd());
   if (connection) store.useConnection(connection);
-  const database = connection && process.env.KEYSTONE_DB_EMAIL && process.env.KEYSTONE_DB_PASSWORD ? {
-    save: async (...args: Parameters<SupabaseStore['save']>) => {
-      await store.signInPassword(process.env.KEYSTONE_DB_EMAIL!, process.env.KEYSTONE_DB_PASSWORD!);
-      return store.save(...args);
-    },
-    history: async (label: string) => {
-      await store.signInPassword(process.env.KEYSTONE_DB_EMAIL!, process.env.KEYSTONE_DB_PASSWORD!);
-      return store.history(label);
-    },
-  } : undefined;
   const services: AgentServices = { inspect: collectSnapshot, run: runSnapshot,
-    key: provider => process.env[provider === 'anthropic' ? 'ANTHROPIC_API_KEY' : 'OPENAI_API_KEY'] ?? '', database };
+    key: provider => process.env[provider === 'anthropic' ? 'ANTHROPIC_API_KEY' : 'OPENAI_API_KEY'] ?? '',
+    database: unattendedDatabase(store, connection) };
   const handle = serveStdio(() => createAgentServer(new AgentSession(repository, values.label!, services), secrets), {
     onerror: () => console.error('Keystone MCP transport error.'),
   });

@@ -1,8 +1,10 @@
 # Supabase setup and first saved record
 
-Keystone's TUI now supports Supabase sign-in, saving reports, and reading the latest
-20 records for a repository label. JSON export remains available. The CLI and
-GitHub Action still save files; unattended database authentication is not implemented.
+Keystone's TUI supports Supabase sign-in, saving reports, and reading the latest
+20 records for a repository label. JSON export remains available. The command line
+can save an existing report and read history unattended with `KEYSTONE_DB_*`
+environment variables (see the README); this is how Conductor's Keystone tab saves.
+The GitHub Action still writes files only.
 
 ## One-time dashboard setup
 

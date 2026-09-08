@@ -44,3 +44,47 @@ test('shipped Action runs without dependencies and emits valid output records', 
   assert.equal(JSON.parse(lines[0]!.slice('report='.length)).status, 'dry-run');
   assert.equal(lines[1], 'audit-status=not-evaluated');
 });
+
+// Database variables from the developer's shell must not leak into these checks.
+function withoutDatabaseEnv(): NodeJS.ProcessEnv {
+  return Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith('KEYSTONE_DB_')));
+}
+
+test('CLI --include-snapshot adds the committed diff, rules, and context for host applications', async t => {
+  const repo = await fixture(t);
+  await change(repo);
+  const run = (...args: string[]) => spawnSync(process.execPath, [cli, '--repo', repo, ...args], { encoding: 'utf8', windowsHide: true, env: withoutDatabaseEnv() });
+  const plain = JSON.parse(run('--dry-run').stdout);
+  assert.equal(plain.snapshot, undefined);
+  const output = join(repo, 'snapshot-report.json');
+  const result = run('--dry-run', '--include-snapshot', '--output', output);
+  assert.equal(result.status, 0, result.stderr);
+  const data = JSON.parse(result.stdout);
+  assert.equal(data.status, 'dry-run');
+  assert.match(data.snapshot.diff, /Welcome everyone/);
+  assert.equal(data.snapshot.rules, 'Never remove tests.');
+  assert.match(data.snapshot.context['.context/active-task.md'], /Build a welcome/);
+  assert.deepEqual(JSON.parse(await readFile(output, 'utf8')), data);
+  // A report file carrying a snapshot is still a valid input for the database mode; only the configuration is missing here.
+  const save = run('--save-db', '--input', output, '--label', 'owner/repo');
+  assert.equal(save.status, 1);
+  assert.match(save.stderr, /Database is not configured/);
+  assert.doesNotMatch(save.stderr, /Invalid stored report/);
+});
+
+test('CLI database modes validate their inputs before contacting any service', async t => {
+  const repo = await fixture(t);
+  const run = (...args: string[]) => spawnSync(process.execPath, [cli, ...args], { cwd: repo, encoding: 'utf8', windowsHide: true, env: withoutDatabaseEnv() });
+  const noLabel = run('--history');
+  assert.equal(noLabel.status, 1); assert.match(noLabel.stderr, /--label/);
+  const unconfigured = run('--history', '--label', 'owner/repo');
+  assert.equal(unconfigured.status, 1); assert.match(unconfigured.stderr, /Database is not configured/);
+  const noInput = run('--save-db', '--label', 'owner/repo');
+  assert.equal(noInput.status, 1); assert.match(noInput.stderr, /--input/);
+  await writeFile(join(repo, 'not-a-report.json'), '{"version": 2}');
+  const invalid = run('--save-db', '--input', join(repo, 'not-a-report.json'), '--label', 'owner/repo');
+  assert.equal(invalid.status, 1); assert.match(invalid.stderr, /Invalid stored report/);
+  const unreadable = run('--save-db', '--input', join(repo, 'missing.json'), '--label', 'owner/repo');
+  assert.equal(unreadable.status, 1); assert.match(unreadable.stderr, /Cannot read the report file/);
+  for (const result of [noLabel, unconfigured, noInput, invalid, unreadable]) assert.equal(result.stdout, '');
+});

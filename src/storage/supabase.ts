@@ -21,7 +21,7 @@ async function readJson(response: Response): Promise<unknown> {
   catch { throw new Error('Database returned an unreadable response. Retry the request.'); }
 }
 
-function validateReport(value: unknown): Report {
+export function validateReport(value: unknown): Report {
   const r = value as Report;
   const strings = (v: unknown): v is string[] => Array.isArray(v) && v.every(s => typeof s === 'string');
   if (!r || r.version !== 1 || !['evaluated', 'dry-run', 'no-changes'].includes(r.status)
@@ -48,12 +48,37 @@ export function validateConnection(connection: Connection): Connection {
   return { url: url.origin, publishableKey: connection.publishableKey.trim() };
 }
 
-export async function loadConnection(cwd: string): Promise<Connection | null> {
+// Public connection details come from the environment first (how Conductor and other hosts
+// launch Keystone), then from .keystone-supabase.json in the configuration folder.
+export async function loadConnection(cwd: string, env: NodeJS.ProcessEnv = process.env): Promise<Connection | null> {
+  if (env.KEYSTONE_DB_URL || env.KEYSTONE_DB_KEY) {
+    try { return validateConnection({ url: env.KEYSTONE_DB_URL ?? '', publishableKey: env.KEYSTONE_DB_KEY ?? '' }); }
+    catch { throw new Error('Invalid KEYSTONE_DB_URL or KEYSTONE_DB_KEY. Set both: the hosted https://project.supabase.co URL and an sb_publishable_ key.'); }
+  }
   try { return validateConnection(JSON.parse(await readFile(resolve(cwd, '.keystone-supabase.json'), 'utf8'))); }
   catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
     throw new Error('Invalid .keystone-supabase.json. It must contain url and publishableKey only.');
   }
+}
+
+// Unattended database access for the CLI and MCP server: the launching process supplies the
+// confirmed Keystone user's email and password through its environment, never through
+// arguments, and the store signs in before every operation. Tokens stay in memory.
+export function unattendedDatabase(store: ReviewStore, connection: Connection | null, env: NodeJS.ProcessEnv = process.env): Pick<ReviewStore, 'save' | 'history'> | undefined {
+  const email = env.KEYSTONE_DB_EMAIL;
+  const password = env.KEYSTONE_DB_PASSWORD;
+  if (!connection || !email || !password) return undefined;
+  return {
+    save: async (id, repository, report) => {
+      await store.signInPassword(email, password);
+      return store.save(id, repository, report);
+    },
+    history: async repository => {
+      await store.signInPassword(email, password);
+      return store.history(repository);
+    },
+  };
 }
 
 // Uses Supabase Auth and PostgREST HTTP APIs. Access tokens live only in memory.
